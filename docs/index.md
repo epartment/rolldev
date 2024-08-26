@@ -41,5 +41,5 @@ caption: About RollDev
 
 changelog
 images
-Github Project <https://github.com/dockergiant/rolldev>
+Github Project <https://github.com/epartment/rolldev>
 ```

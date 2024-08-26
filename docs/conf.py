@@ -29,7 +29,7 @@ source_suffix = ['.rst', '.md']
 master_doc = 'index'
 
 project = 'RollDev'
-copyright = '2023 by DockerGiant.'
+copyright = '2024 by Epartment.'
 author = ''
 version = ''
 release = ''

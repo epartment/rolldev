@@ -1,6 +1,6 @@
 # Environment Types
 
-RollDev currently supports three environment types. These types are passed to `env-init` when configuring a project for local development for the first time. This list of environment types can also be seen by running `roll env-init --help` on your command line. The `docker-compose` configuration used to assemble each environment type can be found in the [environments directory](https://github.com/dockergiant/rolldev/tree/master/environments) on Github.
+RollDev currently supports three environment types. These types are passed to `env-init` when configuring a project for local development for the first time. This list of environment types can also be seen by running `roll env-init --help` on your command line. The `docker-compose` configuration used to assemble each environment type can be found in the [environments directory](https://github.com/epartment/rolldev/tree/master/environments) on Github.
 
 ## Local
 

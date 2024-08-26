@@ -19,14 +19,14 @@ This can be corrected via Preferences -> Resources -> Advanced -> Memory. While 
 
 RollDev may be installed via [Homebrew](https://brew.sh/) on both macOS and Linux hosts:
 
-    brew install dockergiant/roll/roll
+    brew install epartment/roll/roll
     roll svc up
 
 ### Updating via Homebrew
 
 RollDev is updated like other [Homebrew](https://brew.sh/) software by running brew upgrade:
 
-    brew upgrade dockergiant/roll/roll
+    brew upgrade epartment/roll/roll
     roll svc restart
 
 ## Alternative (Manual) Installation
@@ -35,7 +35,7 @@ RollDev may be installed by cloning the repository to the directory of your choi
 
     sudo mkdir /opt/roll
     sudo chown $(whoami) /opt/roll
-    git clone -b main https://github.com/dockergiant/rolldev.git /opt/roll
+    git clone -b main https://github.com/epartment/rolldev.git /opt/roll
     echo 'export PATH="/opt/roll/bin:$PATH"' >> ~/.bashrc
     PATH="/opt/roll/bin:$PATH"
     roll svc up
@@ -61,7 +61,7 @@ Launch wsl from your terminal of choice.
 
     wsl
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
-    brew install dockergiant/roll/roll
+    brew install epartment/roll/roll
     roll svc up
 
 In order for DNS entries to be resolved either add them to your Windows hosts file or add 127.0.0.1 as the first DNS server in your current network adapter in Windows.
