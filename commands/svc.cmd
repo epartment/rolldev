@@ -15,7 +15,7 @@ trap '' ERR
 if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
   eval "$(cat "${ROLL_HOME_DIR}/.env" | sed 's/\r$//g' | grep "^ROLL_")"
 fi
-export ROLL_IMAGE_REPOSITORY="${ROLL_IMAGE_REPOSITORY:-"ghcr.io/dockergiant"}"
+export ROLL_IMAGE_REPOSITORY="${ROLL_IMAGE_REPOSITORY:-"ghcr.io/epartment"}"
 
 ## configure docker-compose files
 DOCKER_COMPOSE_ARGS=()
