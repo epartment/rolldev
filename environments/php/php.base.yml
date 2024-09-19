@@ -1,0 +1,6 @@
+services:
+  sample:
+    build:
+      context: .
+      ssh:
+        - default
