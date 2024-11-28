@@ -1,7 +1,14 @@
-
 x-volumes: &volumes
   - /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
 
 services:
-  php-fpm: { volumes: *volumes }
-  php-debug: { volumes: *volumes }
+  php-fpm:
+    environment:
+      - SSH_AUTH_SOCK=${SSH_AUTH_SOCK_PATH_ENV:/run/host-services/ssh-auth.sock}
+    volumes: 
+      *volumes
+  php-debug:
+    environment:
+      - SSH_AUTH_SOCK=${SSH_AUTH_SOCK_PATH_ENV:/run/host-services/ssh-auth.sock}
+    volumes:
+      *volumes
