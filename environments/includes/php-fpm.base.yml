@@ -6,7 +6,7 @@ x-volumes: &volumes
   - .${ROLL_WEB_ROOT:-}/:/var/www/html:cached
   - bashhistory:/bash_history
   - sshdirectory:/home/www-data/.ssh
-  - ~/.ssh/known_hosts:/home/www-data/known_hosts
+  - ~/.ssh/known_hosts:/home/www-data/.ssh/known_hosts
 
 x-extra_hosts: &extra_hosts
     - ${TRAEFIK_DOMAIN}:${TRAEFIK_ADDRESS:-0.0.0.0}

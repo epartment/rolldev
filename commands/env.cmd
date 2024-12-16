@@ -271,3 +271,8 @@ if [[ "${ROLL_PARAMS[0]}" == "down" ]] \
 then
     roll sync stop
 fi
+
+## set ssh-agent permissions for container user
+if ([[ "${ROLL_PARAMS[0]}" == "up" ]] || [[ "${ROLL_PARAMS[0]}" == "start" ]]) then
+    roll root chmod 777 /run/host-services/ssh-auth.sock
+fi
