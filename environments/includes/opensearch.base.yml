@@ -1,7 +1,7 @@
 services:
   opensearch:
     hostname: "${ROLL_ENV_NAME}-opensearch"
-    image: ${ROLL_IMAGE_REPOSITORY}/opensearch:${OPENSEARCH_VERSION:-1.2}
+    image: ${ROLL_IMAGE_REPOSITORY}/opensearch:${OPENSEARCH_VERSION:-2.19}
     labels:
       - traefik.enable=true
       - traefik.http.routers.${ROLL_ENV_NAME}-opensearch.tls=true

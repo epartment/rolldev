@@ -19,13 +19,13 @@ services:
 
   php-fpm:
     hostname: "${ROLL_ENV_NAME}-php-fpm"
-    image: ${ROLL_IMAGE_REPOSITORY}/php-fpm${ROLL_SVC_PHP_VARIANT:-}:${PHP_VERSION:-7.4}${ROLL_SVC_PHP_NODE:-}
+    image: ${ROLL_IMAGE_REPOSITORY}/php-fpm${ROLL_SVC_PHP_VARIANT:-}:${PHP_VERSION:-8.3}${ROLL_SVC_PHP_NODE:-}
     environment:
       - TRAEFIK_DOMAIN
       - TRAEFIK_SUBDOMAIN
       - SSH_AUTH_SOCK=${SSH_AUTH_SOCK_PATH_ENV:-/tmp/ssh-auth.sock}
-      - NODE_VERSION=${NODE_VERSION:-12}
-      - COMPOSER_VERSION=${COMPOSER_VERSION:-1}
+      - NODE_VERSION=${NODE_VERSION:-22}
+      - COMPOSER_VERSION=${COMPOSER_VERSION:-2}
       - COMPOSER_MEMORY_LIMIT=-1
       - HISTFILE=/bash_history/.bash_history
       - CHOWN_DIR_LIST=${CHOWN_DIR_LIST:-}
@@ -38,13 +38,13 @@ services:
 
   php-debug:
     hostname: "${ROLL_ENV_NAME}-php-debug"
-    image: ${ROLL_IMAGE_REPOSITORY}/php-fpm${ROLL_SVC_PHP_VARIANT:-}-debug:${PHP_VERSION:-7.4}${ROLL_SVC_PHP_NODE:-}
+    image: ${ROLL_IMAGE_REPOSITORY}/php-fpm${ROLL_SVC_PHP_VARIANT:-}-debug:${PHP_VERSION:-8.3}${ROLL_SVC_PHP_NODE:-}
     environment:
       - TRAEFIK_DOMAIN
       - TRAEFIK_SUBDOMAIN
       - SSH_AUTH_SOCK=${SSH_AUTH_SOCK_PATH_ENV:-/tmp/ssh-auth.sock}
-      - NODE_VERSION=${NODE_VERSION:-12}
-      - COMPOSER_VERSION=${COMPOSER_VERSION:-1}
+      - NODE_VERSION=${NODE_VERSION:-22}
+      - COMPOSER_VERSION=${COMPOSER_VERSION:-2}
       - COMPOSER_MEMORY_LIMIT=-1
       - PHP_IDE_CONFIG=serverName=${ROLL_ENV_NAME}-docker
       - HISTFILE=/bash_history/.bash_history
