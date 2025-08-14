@@ -19,7 +19,7 @@ trap '' ERR
 if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
   eval "$(cat "${ROLL_HOME_DIR}/.env" | sed 's/\r$//g' | grep "^ROLL_")"
 fi
-export ROLL_IMAGE_REPOSITORY="${ROLL_IMAGE_REPOSITORY:-"ghcr.io/epartment"}"
+export ROLL_IMAGE_REPOSITORY="${ROLL_IMAGE_REPOSITORY:-"ghcr.io/epartment/roll"}"
 
 ## configure environment type defaults
 if [[ ${ROLL_ENV_TYPE} =~ ^magento || ${ROLL_ENV_TYPE} =~ ^wordpress ]]; then
