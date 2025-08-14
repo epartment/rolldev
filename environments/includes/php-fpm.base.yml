@@ -53,7 +53,6 @@ services:
       - GROUP_ID=${GROUP_ID:-33}
       - OSTYPE=${OSTYPE:-linux}
       - ADD_PHP_EXT=${ADD_PHP_EXT:-}
-      - XDEBUG_MODE=debug,develop
     volumes: *volumes
     extra_hosts: *extra_hosts
     depends_on:
