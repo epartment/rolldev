@@ -53,6 +53,8 @@ function boxinfo() {
    echo "| ${b//?/ } |
   -${b//?/-}-"
    ((use_tput)) && tput sgr 0
+
+   return 0
  }
 
 function boxsuccess() {
@@ -82,6 +84,8 @@ function boxsuccess() {
   echo "| ${b//?/ } |
  -${b//?/-}-"
   ((use_tput)) && tput sgr 0
+
+  return 0
 }
 
 function boxerror() {
@@ -111,6 +115,8 @@ function boxerror() {
   echo "| ${b//?/ } |
  -${b//?/-}-"
   ((use_tput)) && tput sgr 0
+
+  return 0
 }
 
 function version {
