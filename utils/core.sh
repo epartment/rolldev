@@ -27,60 +27,90 @@ function fatal {
 }
 
 function boxinfo() {
-	local s=("$@") b w
-	for l in "${s[@]}"; do
-		((w < ${#l})) && {
-			b="$l"
-			w="${#l}"
-		}
-	done
-	tput setaf 3
-	echo " -${b//?/-}-
-| ${b//?/ } |"
-	for l in "${s[@]}"; do
-		printf '| %s%*s%s |\n' "$(tput setaf 7)" "-$w" "$l" "$(tput setaf 3)"
-	done
-	echo "| ${b//?/ } |
- -${b//?/-}-"
-	tput sgr 0
-}
+   local s=("$@") b w use_tput=0
+
+   # only enable colors if we have a tty and TERM is set (and not "dumb")
+   if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] && command -v tput >/dev/null 2>&1; then
+     use_tput=1
+   fi
+
+   for l in "${s[@]}"; do
+     ((w < ${#l})) && { b="$l"; w="${#l}"; }
+   done
+
+   ((use_tput)) && tput setaf 3
+   echo " -${b//?/-}-
+ | ${b//?/ } |"
+
+   for l in "${s[@]}"; do
+     if ((use_tput)); then
+       printf '| %s%*s%s |\n' "$(tput setaf 7)" "-$w" "$l" "$(tput setaf 3)"
+     else
+       printf '| %*s |\n' "-$w" "$l"
+     fi
+   done
+
+   echo "| ${b//?/ } |
+  -${b//?/-}-"
+   ((use_tput)) && tput sgr 0
+ }
 
 function boxsuccess() {
-	local s=("$@") b w
-	for l in "${s[@]}"; do
-		((w < ${#l})) && {
-			b="$l"
-			w="${#l}"
-		}
-	done
-	tput setaf 3
-	echo " -${b//?/-}-
+  local s=("$@") b w use_tput=0
+
+  # only enable colors if we have a tty and TERM is set (and not "dumb")
+  if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] && command -v tput >/dev/null 2>&1; then
+    use_tput=1
+  fi
+
+  for l in "${s[@]}"; do
+    ((w < ${#l})) && { b="$l"; w="${#l}"; }
+  done
+
+  ((use_tput)) && tput setaf 3
+  echo " -${b//?/-}-
 | ${b//?/ } |"
-	for l in "${s[@]}"; do
-		printf '| %s%*s%s |\n' "$(tput setaf 2)" "-$w" "$l" "$(tput setaf 3)"
-	done
-	echo "| ${b//?/ } |
+
+  for l in "${s[@]}"; do
+    if ((use_tput)); then
+      printf '| %s%*s%s |\n' "$(tput setaf 2)" "-$w" "$l" "$(tput setaf 3)"
+    else
+      printf '| %*s |\n' "-$w" "$l"
+    fi
+  done
+
+  echo "| ${b//?/ } |
  -${b//?/-}-"
-	tput sgr 0
+  ((use_tput)) && tput sgr 0
 }
 
 function boxerror() {
-	local s=("$@") b w
-	for l in "${s[@]}"; do
-		((w < ${#l})) && {
-			b="$l"
-			w="${#l}"
-		}
-	done
-	tput setaf 3
-	echo " -${b//?/-}-
+  local s=("$@") b w use_tput=0
+
+  # only enable colors if we have a tty and TERM is set (and not "dumb")
+  if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] && command -v tput >/dev/null 2>&1; then
+    use_tput=1
+  fi
+
+  for l in "${s[@]}"; do
+    ((w < ${#l})) && { b="$l"; w="${#l}"; }
+  done
+
+  ((use_tput)) && tput setaf 3
+  echo " -${b//?/-}-
 | ${b//?/ } |"
-	for l in "${s[@]}"; do
-		printf '| %s%*s%s |\n' "$(tput setaf 1)" "-$w" "$l" "$(tput setaf 3)"
-	done
-	echo "| ${b//?/ } |
+
+  for l in "${s[@]}"; do
+    if ((use_tput)); then
+      printf '| %s%*s%s |\n' "$(tput setaf 1)" "-$w" "$l" "$(tput setaf 3)"
+    else
+      printf '| %*s |\n' "-$w" "$l"
+    fi
+  done
+
+  echo "| ${b//?/ } |
  -${b//?/-}-"
-	tput sgr 0
+  ((use_tput)) && tput sgr 0
 }
 
 function version {
