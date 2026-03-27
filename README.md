@@ -20,13 +20,13 @@ Roll Docker Stack provides pre-configured Docker environments for various framew
 RollDev may be installed via Homebrew on both macOS and Linux hosts:
 
 ```bash
-brew install dockergiant/roll/roll
+brew install epartment/roll/roll
 roll svc up
 ```
 
 **Updating via Homebrew:**
 ```bash
-brew upgrade dockergiant/roll/roll
+brew upgrade epartment/roll/roll
 roll svc restart
 ```
 
@@ -41,7 +41,7 @@ roll svc restart
 ```bash
 wsl
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
-brew install dockergiant/roll/roll
+brew install epartment/roll/roll
 roll svc up
 ```
 
@@ -70,7 +70,7 @@ RollDev uses a CA root certificate for trusted SSL certificates. The CA root is 
 
 For complete installation instructions, configuration options, troubleshooting, and advanced usage, visit our comprehensive documentation:
 
-**👉 [dockergiant.github.io/rolldev](https://dockergiant.github.io/rolldev)**
+**👉 [epartment.github.io/rolldev](https://epartment.github.io/rolldev)**
 
 ## 🛠️ Supported Environments
 
@@ -86,7 +86,7 @@ For complete installation instructions, configuration options, troubleshooting, 
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [contribution guidelines](https://dockergiant.github.io/rolldev/contributing/) for details.
+We welcome contributions! Please see our [contribution guidelines](https://epartment.github.io/rolldev/contributing/) for details.
 
 ## 📄 License
 
@@ -94,21 +94,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- **Documentation**: [dockergiant.github.io/rolldev](https://dockergiant.github.io/rolldev)
-- **CLI Repository**: [github.com/dockergiant/rolldev](https://github.com/dockergiant/rolldev)
-- **Issues**: [github.com/dockergiant/rolldev/issues](https://github.com/dockergiant/rolldev/issues)
-- **Container Packages**: [github.com/orgs/dockergiant/packages](https://github.com/orgs/dockergiant/packages?repo_name=rolldev)
-
----
-
-<img src="https://files.disrex.nl/disrex-character.gif?t=572693425" alt="Disrex T-Rex Mascot Waving" width="150">
-
-## Sponsored by
-
-<picture>
-  <source srcset="https://files.disrex.nl/logos/logo-w.png" media="(prefers-color-scheme: dark)">
-  <img src="https://files.disrex.nl/logos/logo-b.png" alt="Disrex Logo" width="200">
-</picture>
-
-
-**Made with ❤️**
+- **Documentation**: [epartment.github.io/rolldev](https://epartment.github.io/rolldev)
+- **CLI Repository**: [github.com/epartment/rolldev](https://github.com/epartment/rolldev)
+- **Issues**: [github.com/epartment/rolldev/issues](https://github.com/epartment/rolldev/issues)
+- **Container Packages**: [github.com/orgs/epartment/packages](https://github.com/orgs/epartment/packages?repo_name=rolldev)
