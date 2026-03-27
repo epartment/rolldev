@@ -150,6 +150,9 @@ fi
 [[ ${ROLL_REDIS} -eq 1 ]] \
     && appendEnvPartialIfExists "redis"
 
+[[ ${ROLL_REDISINSIGHT} -eq 1 ]] \
+    && appendEnvPartialIfExists "redisinsight"
+
 [[ ${ROLL_DRAGONFLY} -eq 1 ]] \
     && appendEnvPartialIfExists "dragonfly"
 
@@ -181,6 +184,12 @@ if [[ ${ROLL_SELENIUM_DEBUG} -eq 1 ]]; then
     export ROLL_SELENIUM_DEBUG="-debug"
 else
     export ROLL_SELENIUM_DEBUG=
+fi
+
+## handle describe subcommand
+if [[ "${ROLL_PARAMS[0]}" == "describe" ]]; then
+    source "${ROLL_DIR}/commands/describe.cmd"
+    exit $?
 fi
 
 ## disconnect peered service containers from environment network
@@ -234,7 +243,7 @@ then
     roll sync pause
 fi
 
-## pass ochestration through to docker-compose
+## pass orchestration through to docker-compose
 docker compose \
     --env-file "${ROLL_ENV_PATH}/.env.roll" --project-directory "${ROLL_ENV_PATH}" -p "${ROLL_ENV_NAME}" \
     "${DOCKER_COMPOSE_ARGS[@]}" "${ROLL_PARAMS[@]}" "$@"
