@@ -157,7 +157,7 @@ function initConfigSchema() {
     
     # System configuration
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_RESTART_POLICY); ROLL_CONFIG_SCHEMA_VALUES+=("string:always")
-    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_IMAGE_REPOSITORY); ROLL_CONFIG_SCHEMA_VALUES+=("string:ghcr.io/dockergiant")
+    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_IMAGE_REPOSITORY); ROLL_CONFIG_SCHEMA_VALUES+=("string:ghcr.io/epartment/roll")
 }
 
 ## Get schema for a key
