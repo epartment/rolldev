@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 RollDev is a CLI (pure Bash) that orchestrates Docker development environments for PHP frameworks/CMS (Magento 1/2, Laravel, Symfony, TYPO3, Shopware, WordPress, Akeneo, plain PHP, Vue.js). There is no application code — it is a wrapper that assembles `docker compose` invocations from layered YAML fragments and runs commands inside containers. Distributed primarily via Homebrew (`epartment/roll/roll`).
 
+This repo: [github.com/epartment/rolldev](https://github.com/epartment/rolldev).
+
+### Container images live in a separate repo
+The Docker images this CLI runs (`php-fpm`, `php-fpm-magento2`, `db`/`mariadb`/`mysql`, `nginx`, etc.) are **not built here** — they are built in a separate "images" repo ([github.com/epartment/images](https://github.com/epartment/images): Dockerfiles + GitHub Actions matrix) and published to `ghcr.io/epartment/roll`. This repo only references them by tag. So any change that requires a binary/package/extension to exist *inside* a container (e.g. adding a CLI tool, a PHP extension baked into the image, changing the base OS) must be made in the images repo, not here.
+
+That repo is not part of this checkout and its local path varies per machine. **If a task needs the images repo, ask the user for its local directory** rather than guessing — there is no fixed/derivable location. (When known on this machine it has been at `/Volumes/Case-sensitive/Development/Other/images`, but confirm — don't assume.)
+
 ## Commands
 
 - **Lint (the only CI test):** `shellcheck commands/*.cmd utils/*.sh`. This runs in `.github/workflows/shellcheck.yml` on any change to `commands/*.cmd` or `utils/*.sh`. There is no unit-test suite — run shellcheck locally before pushing changes to those files.

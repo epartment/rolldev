@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+
+ROLL_USAGE=$(cat <<EOF
+\033[33mUsage:\033[0m
+  myloader [args]
+
+  Runs myloader inside the php-fpm container to restore a mydumper dump into the
+  project database. Connection details (host, user, password and database) are
+  auto-filled from the running db service.
+
+  Unless overridden, the dump is read from \033[32mvar/mydumper\033[0m and existing tables are
+  overwritten (--overwrite-tables). Any additional myloader flags are passed
+  through untouched and override the injected defaults.
+
+\033[33mExamples:\033[0m
+  roll myloader
+  roll myloader --threads=4
+  roll myloader --directory=var/dump-20260602
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+EOF
+)

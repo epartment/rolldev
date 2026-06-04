@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+
+ROLL_USAGE=$(cat <<EOF
+\033[33mUsage:\033[0m
+  mydumper [args]
+
+  Runs mydumper inside the php-fpm container to create a fast, parallel logical
+  dump of the project database. Connection details (host, user, password and
+  database) are auto-filled from the running db service.
+
+  Unless overridden, the dump is written to \033[32mvar/mydumper\033[0m within the project.
+  Any additional mydumper flags (e.g. --rows, --compress, --threads) are passed
+  through untouched and override the injected defaults.
+
+\033[33mExamples:\033[0m
+  roll mydumper
+  roll mydumper --compress --threads=4
+  roll mydumper --outputdir=var/dump-\$(date +%Y%m%d)
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+EOF
+)

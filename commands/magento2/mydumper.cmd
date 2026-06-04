@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+
+ROLL_ENV_PATH="$(locateEnvPath)" || exit $?
+loadEnvConfig "${ROLL_ENV_PATH}" || exit $?
+assertDockerRunning
+
+if [[ "${ROLL_ENV_TYPE}" != "magento2" ]]; then
+    warning "This command is only available for Magento 2 projects" && exit 1
+fi
+
+if [[ ${ROLL_DB:-1} -eq 0 ]]; then
+    fatal "Database environment is not used (ROLL_DB=0)."
+fi
+
+## load connection information from the running db container
+DB_CONTAINER=$(roll env ps -q db)
+if [[ ! ${DB_CONTAINER} ]]; then
+    fatal "No container found for db service. Is the environment running?"
+fi
+
+eval "$(
+    docker container inspect "${DB_CONTAINER}" --format '
+        {{- range .Config.Env }}{{with split . "=" -}}
+            {{- index . 0 }}='\''{{ range $i, $v := . }}{{ if $i }}{{ $v }}{{ end }}{{ end }}'\''{{println}}
+        {{- end }}{{ end -}}
+    ' | grep "^MYSQL_"
+)"
+
+## allow return codes from sub-process to bubble up normally
+trap '' ERR
+
+## default output directory (project-relative, dumped as www-data inside php-fpm)
+MYDUMPER_OUTPUT_DIR="var/mydumper"
+
+## inject connection defaults unless the caller already supplied them
+HAS_OUTPUT=0
+HAS_DATABASE=0
+for arg in "${ROLL_PARAMS[@]}" "$@"; do
+    case "$arg" in
+        -o|--outputdir|--outputdir=*) HAS_OUTPUT=1 ;;
+        -B|--database|--database=*) HAS_DATABASE=1 ;;
+    esac
+done
+
+MYDUMPER_ARGS=(--host=db --user="${MYSQL_USER}" --password="${MYSQL_PASSWORD}")
+[[ ${HAS_DATABASE} -eq 0 ]] && MYDUMPER_ARGS+=(--database="${MYSQL_DATABASE}")
+[[ ${HAS_OUTPUT} -eq 0 ]] && MYDUMPER_ARGS+=(--outputdir="${MYDUMPER_OUTPUT_DIR}")
+
+## ensure the default output directory exists before dumping into it
+[[ ${HAS_OUTPUT} -eq 0 ]] && "${ROLL_DIR}/bin/roll" clinotty mkdir -p "${MYDUMPER_OUTPUT_DIR}"
+
+"${ROLL_DIR}/bin/roll" cli mydumper "${MYDUMPER_ARGS[@]}" "${ROLL_PARAMS[@]}" "$@"
