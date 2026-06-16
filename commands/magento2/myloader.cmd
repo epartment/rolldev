@@ -45,7 +45,8 @@ for arg in "${ROLL_PARAMS[@]}" "$@"; do
     esac
 done
 
-MYLOADER_ARGS=(--host=db --user="${MYSQL_USER}" --password="${MYSQL_PASSWORD}")
+## connect as root so the load has full privileges on the target schema
+MYLOADER_ARGS=(--host=db --user=root --password="${MYSQL_ROOT_PASSWORD}")
 [[ ${HAS_DATABASE} -eq 0 ]] && MYLOADER_ARGS+=(--database="${MYSQL_DATABASE}")
 [[ ${HAS_DIRECTORY} -eq 0 ]] && MYLOADER_ARGS+=(--directory="${MYLOADER_INPUT_DIR}")
 [[ ${HAS_OVERWRITE} -eq 0 ]] && MYLOADER_ARGS+=(--overwrite-tables)
