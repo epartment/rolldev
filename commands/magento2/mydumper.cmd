@@ -43,7 +43,9 @@ for arg in "${ROLL_PARAMS[@]}" "$@"; do
     esac
 done
 
-MYDUMPER_ARGS=(--host=db --user="${MYSQL_USER}" --password="${MYSQL_PASSWORD}")
+## connect as root: a consistent dump needs the RELOAD/BACKUP_ADMIN privilege
+## (BACKUP STAGE START / FLUSH TABLES), which the limited app user lacks
+MYDUMPER_ARGS=(--host=db --user=root --password="${MYSQL_ROOT_PASSWORD}")
 [[ ${HAS_DATABASE} -eq 0 ]] && MYDUMPER_ARGS+=(--database="${MYSQL_DATABASE}")
 [[ ${HAS_OUTPUT} -eq 0 ]] && MYDUMPER_ARGS+=(--outputdir="${MYDUMPER_OUTPUT_DIR}")
 
