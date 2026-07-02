@@ -33,22 +33,20 @@ trap '' ERR
 ## default input directory (project-relative, produced by `roll mydumper`)
 MYLOADER_INPUT_DIR="var/mydumper"
 
-## inject connection defaults unless the caller already supplied them
+## inject connection/location defaults unless the caller already supplied them
 HAS_DIRECTORY=0
 HAS_DATABASE=0
-HAS_OVERWRITE=0
 for arg in "${ROLL_PARAMS[@]}" "$@"; do
     case "$arg" in
         -d|--directory|--directory=*) HAS_DIRECTORY=1 ;;
         -B|--database|--database=*) HAS_DATABASE=1 ;;
-        -o|--overwrite-tables) HAS_OVERWRITE=1 ;;
     esac
 done
 
-## connect as root so the load has full privileges on the target schema
+## Inject the connection details (read from the db container) and location defaults; all other
+## flags are passed straight through to myloader.
 MYLOADER_ARGS=(--host=db --user=root --password="${MYSQL_ROOT_PASSWORD}")
 [[ ${HAS_DATABASE} -eq 0 ]] && MYLOADER_ARGS+=(--database="${MYSQL_DATABASE}")
 [[ ${HAS_DIRECTORY} -eq 0 ]] && MYLOADER_ARGS+=(--directory="${MYLOADER_INPUT_DIR}")
-[[ ${HAS_OVERWRITE} -eq 0 ]] && MYLOADER_ARGS+=(--overwrite-tables)
 
 "${ROLL_DIR}/bin/roll" cli myloader "${MYLOADER_ARGS[@]}" "${ROLL_PARAMS[@]}" "$@"
