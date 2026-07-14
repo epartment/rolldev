@@ -86,6 +86,12 @@ while [[ $# -gt 0 ]]; do
             error "Unknown option: $1"
             exit 1
             ;;
+        all)
+            # Legacy alias from the old restore interface ("roll restore all"),
+            # still emitted by pull/pull-exp: means all services from the latest
+            # backup, which is already the default — must not be taken as a backup ID
+            shift
+            ;;
         *)
             # If no backup ID specified yet, use this as the backup ID
             if [[ -z "$RESTORE_BACKUP_ID" ]]; then
@@ -380,8 +386,11 @@ function detectBackupServices() {
         if [[ -f "$backup_path/es.tar.gz" ]]; then
             services+=("elasticsearch")
         fi
+        if [[ -f "$backup_path/os.tar.gz" ]]; then
+            services+=("opensearch")
+        fi
     fi
-    
+
     echo "${services[@]}"
 }
 
@@ -472,10 +481,24 @@ function restoreVolume() {
     elif [[ -f "$backup_path/${service_name}.tar.gz" ]]; then
         # Legacy format
         backup_file="$backup_path/${service_name}.tar.gz"
+    elif [[ "$service_name" == "elasticsearch" && -f "$backup_path/es.tar.gz" ]]; then
+        # Legacy format uses short names for the search engines
+        backup_file="$backup_path/es.tar.gz"
+    elif [[ "$service_name" == "opensearch" && -f "$backup_path/os.tar.gz" ]]; then
+        backup_file="$backup_path/os.tar.gz"
     else
         logMessage WARNING "Backup file not found for service: $service_name"
         logVerbose "Searched in: $backup_path/volumes/ and $backup_path/"
         return 0
+    fi
+
+    # A search-index volume is only mounted when the matching engine is enabled
+    # in this environment's .env.roll — warn instead of silently restoring into
+    # a volume that no service will ever use
+    if [[ "$service_name" == "elasticsearch" && "${ROLL_ELASTICSEARCH:-0}" != "1" ]]; then
+        logMessage WARNING "Backup contains an Elasticsearch index but ROLL_ELASTICSEARCH is not enabled - the restored volume will not be mounted by 'roll env up'"
+    elif [[ "$service_name" == "opensearch" && "${ROLL_OPENSEARCH:-0}" != "1" ]]; then
+        logMessage WARNING "Backup contains an OpenSearch index but ROLL_OPENSEARCH is not enabled - the restored volume will not be mounted by 'roll env up'"
     fi
 
     logVerbose "Found backup file: $backup_file"
