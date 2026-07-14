@@ -429,6 +429,9 @@ function detectBackupServices() {
         if [[ -f "$backup_path/es.tar.gz" ]]; then
             services+=("elasticsearch")
         fi
+        if [[ -f "$backup_path/os.tar.gz" ]]; then
+            services+=("opensearch")
+        fi
     fi
     
     echo "${services[@]}"
@@ -547,6 +550,11 @@ function restoreVolume() {
     elif [[ -f "$backup_path/${service_name}.tar.gz" ]]; then
         # Legacy format
         backup_file="$backup_path/${service_name}.tar.gz"
+    elif [[ "$service_name" == "elasticsearch" && -f "$backup_path/es.tar.gz" ]]; then
+        # Legacy format uses short names for the search engines
+        backup_file="$backup_path/es.tar.gz"
+    elif [[ "$service_name" == "opensearch" && -f "$backup_path/os.tar.gz" ]]; then
+        backup_file="$backup_path/os.tar.gz"
     else
         logMessage WARNING "Backup file not found for service: $service_name"
         logVerbose "Searched in: $backup_path/volumes/ and $backup_path/"
