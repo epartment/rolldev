@@ -40,8 +40,11 @@ fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)
-            roll backup --help
-            exit 0
+            ## Do NOT re-invoke `roll backup --help` here. `backup` is on roll's ROLL_CMD_ANYARGS
+            ## list, so roll's own parser stops at --help and passes it straight through to this
+            ## script — re-invoking roll lands right back on this branch and recurses forever.
+            ## usage.cmd renders ROLL_CMD_HELP (backup.help) and exits on its own.
+            source "${ROLL_DIR}/commands/usage.cmd"
             ;;
         --compression=*)
             BACKUP_COMPRESSION="${1#*=}"
