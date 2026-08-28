@@ -20,7 +20,22 @@ BACKUP_NAME=""
 BACKUP_DESCRIPTION=""
 BACKUP_DUPLICATE_NAME=""  # New environment name for duplication
 BACKUP_DUPLICATE_DOMAIN=""  # New domain for duplication
+BACKUP_OUTPUT_DIR=""        # Where the final archive is written (default: BACKUP_BASE_DIR)
+BACKUP_ARCHIVE_NAME=""      # Final archive basename, extension appended (default: backup_<env>_<id>)
+BACKUP_KEEP_DIR=0           # Keep the uncompressed backup directory alongside the archive
+BACKUP_OUTPUT_REDIRECTED=0  # Set when --output-dir is given, whatever path it names
 PROGRESS=1
+
+## Volumes are always staged inside the project: that is where the disk space is budgeted, and
+## retention cleanup must never be pointed at a shared drop directory holding other projects'
+## archives. --output-dir only moves the finished archive.
+##
+## Keyed on the working directory rather than ROLL_ENV_PATH, so `roll backup` from a project
+## SUB-directory stages into <cwd>/.roll/backups. That is pre-existing behaviour and restore.cmd
+## resolves the same way, so the two agree; changing it here alone would make backups land where
+## restore does not look. Fix all of backup.cmd, restore.cmd and restore-full.cmd together, and
+## note that restore-full.cmd has no ROLL_ENV_PATH at all — it never loads the env config.
+BACKUP_BASE_DIR="$(pwd)/.roll/backups"
 
 # Parse command line arguments
 POSITIONAL_ARGS=()
@@ -32,8 +47,11 @@ fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)
-            roll backup --help
-            exit 0
+            ## Do NOT re-invoke `roll backup --help` here. `backup` is on roll's ROLL_CMD_ANYARGS
+            ## list, so roll's own parser stops at --help and passes it straight through to this
+            ## script — re-invoking roll lands right back on this branch and recurses forever.
+            ## usage.cmd renders ROLL_CMD_HELP (backup.help) and exits on its own.
+            source "${ROLL_DIR}/commands/usage.cmd"
             ;;
         --compression=*)
             BACKUP_COMPRESSION="${1#*=}"
@@ -97,6 +115,19 @@ while [[ $# -gt 0 ]]; do
             ;;
         --duplicate-domain=*)
             BACKUP_DUPLICATE_DOMAIN="${1#*=}"
+            shift
+            ;;
+        --output-dir=*)
+            BACKUP_OUTPUT_DIR="${1#*=}"
+            BACKUP_OUTPUT_REDIRECTED=1
+            shift
+            ;;
+        --archive-name=*)
+            BACKUP_ARCHIVE_NAME="${1#*=}"
+            shift
+            ;;
+        --keep-dir)
+            BACKUP_KEEP_DIR=1
             shift
             ;;
         --no-progress)
@@ -266,7 +297,7 @@ function detectEnabledServices() {
 
 function createBackupDirectory() {
     local timestamp=${1:-$(date +%s)}
-    local backup_dir="$(pwd)/.roll/backups/$timestamp"
+    local backup_dir="${BACKUP_BASE_DIR}/$timestamp"
     
     # Create backup directories
     mkdir -p "$backup_dir"/{volumes,config,metadata,logs}
@@ -632,8 +663,39 @@ function verifyBackup() {
     fi
 }
 
+## Resolve and validate the archive destination up front. This deliberately runs before
+## `env down` and before a single volume is tarred: a drop directory that turns out to be
+## missing or read-only after a multi-hour backup means the whole run is thrown away.
+function resolveBackupOutputDir() {
+    ## --archive-name names a file inside the output directory, so a path separator in it would
+    ## silently write somewhere else entirely (`--archive-name=../x`) and skip the checks below.
+    if [[ "$BACKUP_ARCHIVE_NAME" == */* ]]; then
+        error "--archive-name must be a filename, not a path: $BACKUP_ARCHIVE_NAME"
+        exit 1
+    fi
+
+    if [[ -z "$BACKUP_OUTPUT_DIR" ]]; then
+        BACKUP_OUTPUT_DIR="${BACKUP_BASE_DIR}"
+        return 0
+    fi
+
+    if ! mkdir -p "$BACKUP_OUTPUT_DIR" 2>/dev/null; then
+        error "Cannot create backup output directory: $BACKUP_OUTPUT_DIR"
+        exit 1
+    fi
+
+    if [[ ! -w "$BACKUP_OUTPUT_DIR" ]]; then
+        error "Backup output directory is not writable: $BACKUP_OUTPUT_DIR"
+        exit 1
+    fi
+
+    ## Normalise to an absolute path: the final archive is written from inside a `cd` subshell,
+    ## where a relative destination would resolve against the staging directory instead.
+    BACKUP_OUTPUT_DIR="$(cd "$BACKUP_OUTPUT_DIR" && pwd)"
+}
+
 function cleanupOldBackups() {
-    local backup_base_dir="$(pwd)/.roll/backups"
+    local backup_base_dir="${BACKUP_BASE_DIR}"
     
     if [[ $BACKUP_RETENTION_DAYS -le 0 ]]; then
         return 0
@@ -657,6 +719,7 @@ function performBackup() {
     
     # Validate inputs
     validateCompression || exit 1
+    resolveBackupOutputDir
     
     # Handle interactive password prompt if needed
     if [[ "$BACKUP_ENCRYPT" == "PROMPT" ]]; then
@@ -802,32 +865,53 @@ function performBackup() {
     verifyBackup "$backup_dir"
     
     # Create compressed archive for the entire backup
-    local archive_name="backup_${ROLL_ENV_NAME}_${timestamp}$(getCompressionExtension)"
+    local archive_name="${BACKUP_ARCHIVE_NAME:-backup_${ROLL_ENV_NAME}_${timestamp}}$(getCompressionExtension)"
+    local archive_path="${BACKUP_OUTPUT_DIR}/${archive_name}"
     logMessage INFO "Creating final backup archive: $archive_name"
-    
-    # Suppress tar warnings when using --output-id
+
+    ## The `cd` scopes tar's member paths to "<id>/..." so the archive extracts straight into a
+    ## backups directory; the redirect uses the absolute destination so it can land elsewhere.
+    ##
+    ## pipefail is essential and is NOT set globally in roll: without it the pipeline reports the
+    ## compressor's status, and gzip happily exits 0 on a truncated stream from a tar that ran out
+    ## of disk. That would report success and then delete the only uncompressed copy below.
+    local archive_status=0
     if [[ $BACKUP_OUTPUT_ID -eq 1 ]]; then
-        (cd "$(pwd)/.roll/backups" && tar -cf - "$timestamp" 2>/dev/null | $(getCompressionCommand) > "$archive_name")
+        (set -o pipefail; cd "${BACKUP_BASE_DIR}" && tar -cf - "$timestamp" 2>/dev/null | $(getCompressionCommand) > "$archive_path") || archive_status=$?
     else
-        (cd "$(pwd)/.roll/backups" && tar -cf - "$timestamp" | $(getCompressionCommand) > "$archive_name")
+        (set -o pipefail; cd "${BACKUP_BASE_DIR}" && tar -cf - "$timestamp" | $(getCompressionCommand) > "$archive_path") || archive_status=$?
     fi
-    
-    if [[ $? -eq 0 ]]; then
-        # Update latest symlink
-        (cd "$(pwd)/.roll/backups" && ln -sf "$archive_name" "latest$(getCompressionExtension)")
-        
+
+    if [[ $archive_status -eq 0 ]]; then
+        ## Only maintain the "latest" pointer when the archive was not redirected. A shared drop
+        ## directory holds archives for many environments, where a single `latest` symlink would
+        ## be overwritten by whichever project finished last. Keyed on whether --output-dir was
+        ## given rather than on comparing the two paths, which differ as strings for the same
+        ## directory once symlinks or a relative argument are involved.
+        if [[ $BACKUP_OUTPUT_REDIRECTED -eq 0 ]]; then
+            (cd "${BACKUP_BASE_DIR}" && ln -sf "$archive_name" "latest$(getCompressionExtension)")
+        fi
+
         if [[ $BACKUP_OUTPUT_ID -eq 1 ]]; then
             # Only output the backup ID for programmatic use
             echo "$timestamp"
         else
             logMessage SUCCESS "Backup completed successfully!"
             logMessage INFO "Backup ID: $timestamp"
-            logMessage INFO "Archive: $archive_name ($(du -h "$(pwd)/.roll/backups/$archive_name" | cut -f1))"
-            logMessage INFO "Location: $(pwd)/.roll/backups/"
+            logMessage INFO "Archive: $archive_name ($(du -h "$archive_path" | cut -f1))"
+            logMessage INFO "Location: ${BACKUP_OUTPUT_DIR}/"
         fi
-        
-        # Clean up directory version (keep archive)
-        rm -rf "$backup_dir"
+
+
+        ## Clean up the directory version, which the archive already contains. --keep-dir
+        ## retains it for a caller that needs a restorable backup left in place — restore
+        ## reads the directory form, so archiving the workspace after a backup only yields a
+        ## restorable copy while the directory is still there.
+        if [[ $BACKUP_KEEP_DIR -eq 0 ]]; then
+            rm -rf "$backup_dir"
+        else
+            logMessage INFO "Keeping uncompressed backup directory: $backup_dir"
+        fi
     else
         logMessage ERROR "Failed to create final backup archive"
         exit 1
@@ -850,8 +934,8 @@ case "${BACKUP_COMMAND_PARAMS[0]}" in
         ;;
     list|ls)
         echo "Available backups:"
-        if [[ -d "$(pwd)/.roll/backups" ]]; then
-            ls -la "$(pwd)/.roll/backups/" | grep -E '^d.*[0-9]{10}$|^-.*backup_.*\.tar'
+        if [[ -d "${BACKUP_BASE_DIR}" ]]; then
+            ls -la "${BACKUP_BASE_DIR}/" | grep -E '^d.*[0-9]{10}$|^-.*backup_.*\.tar'
         else
             echo "No backups found."
         fi
@@ -861,14 +945,14 @@ case "${BACKUP_COMMAND_PARAMS[0]}" in
             backup_id="${BACKUP_COMMAND_PARAMS[1]}"
             
             # First check if directory exists (uncompressed backup)
-            metadata_file="$(pwd)/.roll/backups/$backup_id/metadata/backup.json"
+            metadata_file="${BACKUP_BASE_DIR}/$backup_id/metadata/backup.json"
             if [[ -f "$metadata_file" ]]; then
                 cat "$metadata_file" | jq '.' 2>/dev/null || cat "$metadata_file"
             else
                 # Look for compressed archive
                 archive_file=""
                 for ext in ".tar.gz" ".tar.xz" ".tar.lz4" ".tar"; do
-                    potential_file="$(pwd)/.roll/backups/backup_${ROLL_ENV_NAME}_${backup_id}${ext}"
+                    potential_file="${BACKUP_BASE_DIR}/backup_${ROLL_ENV_NAME}_${backup_id}${ext}"
                     if [[ -f "$potential_file" ]]; then
                         archive_file="$potential_file"
                         break
@@ -877,7 +961,7 @@ case "${BACKUP_COMMAND_PARAMS[0]}" in
                 
                 if [[ -z "$archive_file" ]]; then
                     # Also check for generic archive names
-                    archive_file=$(ls "$(pwd)/.roll/backups"/*"$backup_id"*.tar* 2>/dev/null | head -1)
+                    archive_file=$(ls "${BACKUP_BASE_DIR}"/*"$backup_id"*.tar* 2>/dev/null | head -1)
                 fi
                 
                 if [[ -n "$archive_file" ]]; then
