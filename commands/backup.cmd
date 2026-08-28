@@ -23,11 +23,18 @@ BACKUP_DUPLICATE_DOMAIN=""  # New domain for duplication
 BACKUP_OUTPUT_DIR=""        # Where the final archive is written (default: BACKUP_BASE_DIR)
 BACKUP_ARCHIVE_NAME=""      # Final archive basename, extension appended (default: backup_<env>_<id>)
 BACKUP_KEEP_DIR=0           # Keep the uncompressed backup directory alongside the archive
+BACKUP_OUTPUT_REDIRECTED=0  # Set when --output-dir is given, whatever path it names
 PROGRESS=1
 
 ## Volumes are always staged inside the project: that is where the disk space is budgeted, and
 ## retention cleanup must never be pointed at a shared drop directory holding other projects'
 ## archives. --output-dir only moves the finished archive.
+##
+## Keyed on the working directory rather than ROLL_ENV_PATH, so `roll backup` from a project
+## SUB-directory stages into <cwd>/.roll/backups. That is pre-existing behaviour and restore.cmd
+## resolves the same way, so the two agree; changing it here alone would make backups land where
+## restore does not look. Fix all of backup.cmd, restore.cmd and restore-full.cmd together, and
+## note that restore-full.cmd has no ROLL_ENV_PATH at all — it never loads the env config.
 BACKUP_BASE_DIR="$(pwd)/.roll/backups"
 
 # Parse command line arguments
@@ -112,6 +119,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --output-dir=*)
             BACKUP_OUTPUT_DIR="${1#*=}"
+            BACKUP_OUTPUT_REDIRECTED=1
             shift
             ;;
         --archive-name=*)
@@ -659,6 +667,13 @@ function verifyBackup() {
 ## `env down` and before a single volume is tarred: a drop directory that turns out to be
 ## missing or read-only after a multi-hour backup means the whole run is thrown away.
 function resolveBackupOutputDir() {
+    ## --archive-name names a file inside the output directory, so a path separator in it would
+    ## silently write somewhere else entirely (`--archive-name=../x`) and skip the checks below.
+    if [[ "$BACKUP_ARCHIVE_NAME" == */* ]]; then
+        error "--archive-name must be a filename, not a path: $BACKUP_ARCHIVE_NAME"
+        exit 1
+    fi
+
     if [[ -z "$BACKUP_OUTPUT_DIR" ]]; then
         BACKUP_OUTPUT_DIR="${BACKUP_BASE_DIR}"
         return 0
@@ -856,18 +871,24 @@ function performBackup() {
 
     ## The `cd` scopes tar's member paths to "<id>/..." so the archive extracts straight into a
     ## backups directory; the redirect uses the absolute destination so it can land elsewhere.
+    ##
+    ## pipefail is essential and is NOT set globally in roll: without it the pipeline reports the
+    ## compressor's status, and gzip happily exits 0 on a truncated stream from a tar that ran out
+    ## of disk. That would report success and then delete the only uncompressed copy below.
     local archive_status=0
     if [[ $BACKUP_OUTPUT_ID -eq 1 ]]; then
-        (cd "${BACKUP_BASE_DIR}" && tar -cf - "$timestamp" 2>/dev/null | $(getCompressionCommand) > "$archive_path") || archive_status=$?
+        (set -o pipefail; cd "${BACKUP_BASE_DIR}" && tar -cf - "$timestamp" 2>/dev/null | $(getCompressionCommand) > "$archive_path") || archive_status=$?
     else
-        (cd "${BACKUP_BASE_DIR}" && tar -cf - "$timestamp" | $(getCompressionCommand) > "$archive_path") || archive_status=$?
+        (set -o pipefail; cd "${BACKUP_BASE_DIR}" && tar -cf - "$timestamp" | $(getCompressionCommand) > "$archive_path") || archive_status=$?
     fi
 
     if [[ $archive_status -eq 0 ]]; then
-        ## Only maintain the "latest" pointer in the project's own backups directory. A shared
-        ## drop directory holds archives for many environments, where a single `latest` symlink
-        ## would be overwritten by whichever project finished last.
-        if [[ "${BACKUP_OUTPUT_DIR}" == "${BACKUP_BASE_DIR}" ]]; then
+        ## Only maintain the "latest" pointer when the archive was not redirected. A shared drop
+        ## directory holds archives for many environments, where a single `latest` symlink would
+        ## be overwritten by whichever project finished last. Keyed on whether --output-dir was
+        ## given rather than on comparing the two paths, which differ as strings for the same
+        ## directory once symlinks or a relative argument are involved.
+        if [[ $BACKUP_OUTPUT_REDIRECTED -eq 0 ]]; then
             (cd "${BACKUP_BASE_DIR}" && ln -sf "$archive_name" "latest$(getCompressionExtension)")
         fi
 
