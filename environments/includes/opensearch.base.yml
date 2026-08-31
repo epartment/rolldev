@@ -12,7 +12,7 @@ services:
       - discovery.type=single-node
       - indices.query.bool.max_clause_count=16384
       - indices.id_field_data.enabled=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms64m -Xmx512m"
+      - "OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS}"
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - DISABLE_SECURITY_PLUGIN=true
     volumes:

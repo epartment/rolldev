@@ -40,7 +40,13 @@ fi
 if [[ ${ROLL_BROWSERSYNC} -eq 1 ]]; then
   export BROWSERSYNC_PORT_WEB=$(roll browsersync freeport web)
   export BROWSERSYNC_PORT_UI=$(roll browsersync freeport ui)
-  appendEnvPartialIfExists "browsersync"
+  if [[ ${ROLL_PUBLISH_PORTS} -eq 1 ]]; then
+    appendEnvPartialIfExists "browsersync"
+  else
+    ## ROLL_PUBLISH_PORTS=0 skips host port publication entirely - needed to run many
+    ## environments unattended on one host without port collisions.
+    appendEnvPartialIfExists "browsersync.noports"
+  fi
 fi
 
 [[ ${ROLL_INCLUDE_GIT} -eq 1 ]] \
