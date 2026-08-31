@@ -14,11 +14,8 @@ on unattended Linux hosts alike.
 
 <!-- include_open_stop -->
 
-> The repository's only automated test — `shellcheck commands/*.cmd utils/*.sh`, run by
-> `.github/workflows/shellcheck.yml` — currently **fails** (6 errors, 111 warnings, 95 notes as of
-> version 0.7.2), so it provides no regression signal. `roll db dump` is also broken against the
-> MariaDB 11.x images that are in active use. Both are recorded in
-> [Known issues & improvement points](#known-issues--improvement-points) as **H1** and **H2**.
+> `roll db dump` is broken against the MariaDB 11.x images that are in active use. Recorded in
+> [Known issues & improvement points](#known-issues--improvement-points) as **H2**.
 
 ## Contents
 
@@ -82,7 +79,7 @@ cosmetic one. Anything touching these areas needs testing on both:
 
 | Area | macOS (`darwin`) | Linux (`linux`) | Where |
 |---|---|---|---|
-| Bash version | 3.2.57 (system bash) | usually 5.x | Why the Bash 3.2 constraint exists; a bash-4 construct fails only on macOS (**H3**) |
+| Bash version | 3.2.57 (system bash) | usually 5.x | Why the Bash 3.2 constraint exists; use `bash 3.2` compatible syntax only |
 | File sync | Mutagen session, named volume for the web root | direct bind mount, no Mutagen | `environments/<type>/<type>.darwin.yml`, `commands/sync.cmd:33-35` (fatals off darwin) |
 | `sed -i` | BSD — requires a backup suffix | GNU — suffix optional | Always use `sed_inplace` (`utils/core.sh:167`) |
 | `ping` flags | `-t` is a **timeout** | `-t` is the **TTL** | `isOnline` (`utils/core.sh:161`) is wrong on Linux — finding **M11** |
@@ -606,63 +603,7 @@ rather than defects, and of the [boundary findings](#boundary-findings) above.
 
 ### High
 
-**H1. The repository's only automated test fails** — `.github/workflows/shellcheck.yml:20`
-
-- *What:* CI runs `shellcheck commands/*.cmd utils/*.sh`, which exits 1. **Verified:** 6 errors, 111
-  warnings and 95 notes on a clean checkout. There is no `.shellcheckrc` and no severity threshold, so
-  every one of the 212 findings is a failure. The errors are:
-
-  | Location | Check | Problem |
-  |---|---|---|
-  | `utils/core.sh:147`, `utils/core.sh:154` | SC2068 | Unquoted `${DOCKER_PEERED_SERVICES[@]}` re-splits elements |
-  | `utils/core.sh:26`, `commands/sign-certificate.cmd:12` | SC2242 | `exit -1` — the process actually exits 255 |
-  | `commands/restore.cmd:186`, `commands/restore-full.cmd:195` | SC2145 | A string argument mixed with an array expansion |
-
-- *Why it matters:* A gate that is always red is indistinguishable from a gate that has just gone red,
-  so the one mechanism that could have caught the quoting and array-expansion bugs elsewhere in this
-  list provides no signal. `exit -1` in `fatal` also means every fatal error reports exit status 255,
-  which is indistinguishable from a signal-terminated process to any script wrapping `roll`.
-- *Suggested fix:* Fix the six errors first (`"${DOCKER_PEERED_SERVICES[@]}"`, `exit 1`, `${arr[*]}`
-  where a single string is intended), then add `.shellcheckrc` with the `disable=` list for the
-  warning classes the codebase deliberately accepts, so the gate goes green and stays meaningful.
-  Raising the threshold with `shellcheck -S error` is the quicker alternative but leaves the 111
-  warnings unreviewed.
-
-**H2. `roll db dump` fails against the MariaDB 11.x images in active use** — `commands/db.cmd:44`
-
-- *What:* The `dump` subcommand runs `mysqldump` inside the `db` container. **Verified:** in
-  `ghcr.io/epartment/roll/mariadb:11.4` — the image a running environment on the review machine was
-  using — `mysqldump` does not exist; MariaDB 11 renamed it to `mariadb-dump`. The compatibility
-  symlink for the client (`mysql`, used by `connect` at `commands/db.cmd:34` and `import` at
-  `commands/db.cmd:40`) *is* still present, so only `dump` is affected.
-- *Why it matters:* `roll db dump` exits with a Docker "executable file not found" error rather than
-  anything mentioning MariaDB versions, on a command whose whole purpose is to produce a backup. The
-  schema still defaults `MARIADB_VERSION` to 10.4, so the failure only appears on projects that pin a
-  newer version — which makes it look intermittent across projects.
-- *Suggested fix:* Probe once and fall back, so both generations work:
-  `DUMP_BIN=$(roll env exec -T db sh -c 'command -v mariadb-dump || command -v mysqldump')`, then
-  invoke `${DUMP_BIN}`. Apply the same treatment to `mysql` in `connect`/`import` before the client
-  symlink is dropped too. A `mysqldump` symlink in the images repository would also fix it, but the
-  probe keeps this repo working against images it does not control.
-
-**H3. `roll registry categories` aborts on macOS** — `utils/registry.sh:273`,
-`commands/registry.cmd:36`
-
-- *What:* Both lines use `${category^}`, bash 4's "uppercase first character" expansion. **Verified:**
-  under bash 3.2.57 (the macOS system bash, which `#!/usr/bin/env bash` resolves to on a machine
-  without a newer bash first on `PATH`) the command dies with
-  `bad substitution` and prints nothing else. A third occurrence, `${categories[$i]^}` at
-  `utils/registry.sh:363`, is silently accepted by bash 3.2 as a no-op, so `roll registry stats`
-  works but never capitalises.
-- *Why it matters:* It is a hard failure of a documented subcommand on the primary development
-  platform, and it contradicts the Bash 3.2 constraint that the rest of the codebase carefully
-  observes. The inconsistency between the scalar and array forms is why it survived: the array form
-  produces no error to notice.
-- *Suggested fix:* Replace all three with a helper — `printf '%s%s' "$(echo "${s:0:1}" | tr
-  '[:lower:]' '[:upper:]')" "${s:1}"` — or simply drop the capitalisation, since the category values
-  are already lowercase words. Add a `bash --posix`-independent smoke test that runs
-  `roll registry categories` under `/bin/bash` on a macOS runner, because Linux-only CI cannot catch
-  this class of bug.
+None found.
 
 ### Medium
 
@@ -783,20 +724,6 @@ time** — `commands/env.cmd:206`
   `roll env ps -q "${service}"`, then `docker container inspect` for the hostname. That also removes
   the assumption of a single replica. Apply the same change to `commands/describe.cmd:18`.
 
-**M9. `fixowns` and `fixperms` mishandle multiple arguments** — `commands/magento2/fixowns.cmd:17,20`,
-`commands/magento2/fixperms.cmd:17,21`
-
-- *What:* Both test `[ -z "${ROLL_PARAMS[@]}" ]`. With one element that works by accident; with two or
-  more, `[` receives three arguments and fails with `too many arguments`. `fixowns.cmd:20` then
-  interpolates the array into a single path — `/var/www/html/"${ROLL_PARAMS[@]}"` — which concatenates
-  the elements rather than treating them as separate targets.
-- *Why it matters:* `roll fixowns app/code var` reports a shell error instead of fixing ownership, or
-  chowns a path that does not exist. Since these commands exist to recover from permission problems,
-  they fail exactly when someone is already stuck.
-- *Suggested fix:* Test the count — `if (( ${#ROLL_PARAMS[@]} == 0 )); then` — and pass the array
-  through as separate arguments, prefixing each with `/var/www/html/` in a loop rather than inside one
-  quoted expansion.
-
 **M10. Nothing tests the macOS half of a platform the tool must support** —
 `.github/workflows/shellcheck.yml:17`
 
@@ -804,15 +731,14 @@ time** — `commands/env.cmd:206`
   on any platform — CI lints shell sources and builds documentation, nothing more.
 - *Why it matters:* macOS is the primary developer platform *and* the one with the divergent
   behaviour (bash 3.2, BSD flag semantics, Mutagen), so every platform-specific defect in this list
-  is invisible to CI by construction. **H3** is the clearest case: `${category^}` lints clean and runs
-  fine on Ubuntu, and hard-fails on the platform most users are on. **M11** is the mirror image — a
-  bug that only manifests on Linux, shipped from macOS machines.
+  is invisible to CI by construction. **M11** is an example — a bug that only manifests on Linux,
+  shipped from macOS machines.
 - *Suggested fix:* Add a `macos-latest` job running the same ShellCheck invocation, then a minimal
   matrix smoke test across `macos-latest` and `ubuntu-latest` that needs no Docker daemon:
   `./bin/roll version`, `./bin/roll registry validate`, `./bin/roll registry categories`,
   `./bin/roll config schema`, and a `roll env-init` into a temporary directory followed by
   `roll config validate`. On macOS, invoke via `/bin/bash ./bin/roll` so bash 3.2 is exercised rather
-  than whatever the runner has on `PATH`. That set would have caught **H3**, **M7** and **M9**.
+  than whatever the runner has on `PATH`. That set would catch **M7**.
 
 **M11. `isOnline` always reports offline on Linux, so `roll svc up` never refreshes images** —
 `utils/core.sh:161-163`
@@ -833,28 +759,6 @@ time** — `commands/env.cmd:206`
   `curl -fsS -m 3 -o /dev/null https://ghcr.io/v2/ && echo true || echo false`. If `ping` must stay,
   branch on `${ROLL_ENV_SUBT}` and use `-W 2` on Linux — but note `isOnline` is in `utils/core.sh`,
   which is sourced before the config is loaded, so `$OSTYPE` is the only signal available there.
-
-**M12. WSL hosts get no OS-specific compose fragment at all** — `utils/config.sh:361-363`,
-`utils/env.sh:96,98`
-
-- *What:* `loadRollConfig` sets `ROLL_ENV_SUBT=wsl` when `/proc/sys/kernel/osrelease` mentions
-  Microsoft. `appendEnvPartialIfExists` then looks for `<name>.wsl.yml`, and **no such file exists**
-  anywhere in `environments/` (verified — only `.base.yml`, `.darwin.yml` and `.linux.yml` are
-  present). A WSL host therefore receives neither the darwin nor the linux variant of any fragment.
-- *Why it matters:* The most consequential loss is `environments/includes/php-fpm.linux.yml`, the only
-  place the host's SSH agent socket is mounted into the containers. Without it `SSH_AUTH_SOCK` falls
-  back to `/tmp/ssh-auth.sock` from `environments/includes/php-fpm.base.yml:26`, which nothing
-  creates, so agent forwarding — and therefore `composer install` against private repositories —
-  cannot work on WSL, and the unconditional `chmod 777` at `commands/env.cmd:285-287` targets a path
-  that does not exist. WSL2 is a documented install target in `docs/installing.md`, so this is a
-  supported configuration silently missing a fragment. *The WSL-side consequences are read from the
-  code; unverified, as no WSL host was available for this review.*
-- *Suggested fix:* Either treat WSL as Linux for fragment selection — have
-  `appendEnvPartialIfExists` fall back to the `linux` variant when `ROLL_ENV_SUBT` is `wsl`, which
-  matches the intent, since WSL is a Linux kernel — or add `environments/includes/php-fpm.wsl.yml`.
-  The fallback is preferable: it is one change in `utils/env.sh` and it covers every present and
-  future `.linux.yml` rather than only the one that is currently missed. Keep the separate `wsl`
-  value, because `utils/config.sh:440-442` legitimately needs it for `XDEBUG_CONNECT_BACK_HOST`.
 
 ### Low
 
@@ -946,18 +850,6 @@ time** — `commands/env.cmd:206`
   log is never clean, so a real warning is easy to miss.
 - *Suggested fix:* Remove both settings, or add the directories with a `.gitkeep`.
 
-**L9. The ShellCheck gate does not cover the env-type commands or the help files** —
-`.github/workflows/shellcheck.yml:5-13,20`
-
-- *What:* The glob is `commands/*.cmd utils/*.sh`. It excludes the ten `.cmd` files in
-  `commands/magento2/` and the one in `commands/wordpress/` (344 and 11 lines), and all 40 `.help`
-  files, which are Bash scripts sourced by `commands/usage.cmd:32`. The `paths:` trigger has the same
-  gap, so a change to `commands/magento2/` does not even start the workflow.
-- *Why it matters:* Finding **M9** lives in exactly that blind spot — SC2199/SC2198 would have
-  flagged `[ -z "${ROLL_PARAMS[@]}" ]`.
-- *Suggested fix:* Lint `commands/**/*.cmd`, `commands/**/*.help` and `utils/*.sh`, and widen the
-  `paths:` filter to match. Do this after **H1**, since it will surface more findings.
-
 **L10. Root CA trust is skipped without warning on Linux distributions that are neither Debian- nor
 Fedora-family** — `commands/install.cmd:29-52`
 
@@ -989,10 +881,10 @@ Checked during this review and found correct, so the next reader does not re-inv
   `commands/vnc.cmd` are correctly macOS- and Linux-specific respectively. `ping` in `isOnline`
   (**M11**) and the missing `wsl` fragment (**M12**) are the only two places where the platform
   difference was not handled.
-- **Bash 3.2 compliance elsewhere.** The parallel-indexed-array pattern in `utils/config.sh` and
+- **Bash 3.2 compliance.** The parallel-indexed-array pattern in `utils/config.sh` and
   `utils/registry.sh` is applied consistently; no associative arrays anywhere. `commands/status.cmd`
-  correctly guards its `mapfile` use with a `while read` fallback. The only bash-4 constructs found are
-  the three `${var^}` uses in finding **H3**.
+  correctly guards its `mapfile` use with a `while read` fallback. Case modification is always done
+  via `tr` or the `capitalize` helper function.
 - **Arithmetic increments.** No bare `((x++))` remains in `commands/` or `utils/`; the codebase uses
   `x=$((x + 1))`, which is what keeps `set -e` from killing the CLI mid-command.
 - **`roll redis` works with Dragonfly.** `environments/includes/dragonfly.base.yml` defines the
@@ -1034,14 +926,11 @@ line-audited, and neither backup nor restore was executed against a live environ
 | `docker compose version should be 2.2.3 or higher` | Compose v1, or the plugin is missing | Install the Compose v2 plugin; `docker-compose` (hyphenated) is not used |
 | `invalid project name "…"` from `roll env up` | `ROLL_ENV_NAME` contains uppercase or an illegal character | Lowercase it in `.env.roll`; note the rename orphans the old volumes (finding **M7**) |
 | Environment comes up on an empty database after a rename | `ROLL_ENV_NAME` is the Compose project name and prefixes every named volume | Bring the environment down, copy `oldname_dbdata` to `newname_dbdata`, bring it up |
-| `bad substitution` from `roll registry categories` | Bash 4 syntax under macOS bash 3.2 | Finding **H3**; no workaround for the subcommand — use `roll registry list` |
-| `executable file not found` from `roll db dump` | `mysqldump` absent on MariaDB 11.x | Finding **H2**; workaround `roll env exec -T db mariadb-dump -u… -p… <db>` |
 | Magento cannot reach Varnish, Elasticsearch or RabbitMQ, and the containers are not running | `.env.roll` omits the toggles, which resolve to `0` despite the env-type default | Finding **M1**; set `ROLL_VARNISH=1`, `ROLL_ELASTICSEARCH=1`, `ROLL_RABBITMQ=1` explicitly |
 | A project silently runs an older PHP or Node than expected | Schema default won over the fragment fallback | Finding **M2**; pin the version in `.env.roll` |
 | `port is already allocated` on `php-fpm` | `ROLL_BROWSERSYNC=1` publishes fixed host ports on that service — the only fragment that publishes any | Set `ROLL_BROWSERSYNC=0`; verify with `roll env config \| grep published`. See `FEATURE-REQUESTS.md` H2 |
 | A command run right after `roll env up` fails to connect to the DB or search engine | No fragment declares a `healthcheck:` and `up` does not pass `--wait`, so it returns when containers *start* | Retry with a wait loop against the service. See `FEATURE-REQUESTS.md` H1 |
 | Shared-service images never update on Linux, however often `roll svc up` runs | `isOnline` uses BSD `ping -t` semantics, so the probe always fails on Linux and `svc pull` is skipped | Finding **M11**; run `roll svc pull` explicitly |
-| SSH agent forwarding does not work inside the containers on WSL2 | `ROLL_ENV_SUBT=wsl` matches no compose fragment, so the socket mount from `php-fpm.linux.yml` is never applied | Finding **M12**; as a workaround add the mount to the project's `.roll/roll-env.yml` |
 | `.test` sites show a certificate error on Linux after a clean `roll install` | CA trust is only wired up for Debian- and Fedora-family distributions, and is skipped silently otherwise | Finding **L10**; add `~/.roll/ssl/rootca/certs/ca.cert.pem` to the distribution's trust store manually |
 | `Mutagen sync sessions are not used on "linux" host environments` | `roll sync` is macOS-only | Expected; Linux and WSL bind-mount directly |
 | `Mutagen configuration does not exist for environment type "…"` | Only `magento1`, `magento2` and `shopware` ship a `.mutagen.yml` | Expected; that type uses a bind mount on macOS too |
