@@ -31,37 +31,9 @@ Adapted from the usual defect scale, since these are gaps rather than bugs:
 
 ### High
 
-**H2. No supported way to run an environment with no published host ports** — `environments/includes/browsersync.base.yml:3-5`
-
-- *What:* When `ROLL_BROWSERSYNC=1`, that partial publishes `${BROWSERSYNC_PORT_WEB:-3000}` and
-  `${BROWSERSYNC_PORT_UI:-3001}` **on the `php-fpm` service**. It is the only file in
-  `environments/` that publishes host ports at all (verified — `grep -rl "ports:" environments/`
-  matches only this file).
-- *Why it matters:* Two environments on one host with browsersync enabled collide on the fixed host
-  port. Compose reports `Bind for 0.0.0.0:<port> failed: port is already allocated`, `php-fpm` never
-  starts, and every subsequent command fails against a container that is not running. Because the
-  ports come from RollDev's own partial rather than the project, rewriting a project's
-  `.roll/roll-env*.yml` overrides cannot remove them — the ports are not in the project to begin
-  with, so tooling that strips overrides reports success while the collision persists.
-- *Suggested fix:* A `ROLL_PUBLISH_PORTS` boolean in the config schema (default `1`, declared
-  alongside the other flags around `utils/config.sh:81`) that suppresses host port publication for
-  the whole environment. Auto-assigning an ephemeral host port on collision would also solve it and
-  would help interactive multi-project use too. The workaround today is to force
-  `ROLL_BROWSERSYNC=0` into `.env.roll` before `env up`, which means reaching around RollDev's
-  configuration to defeat RollDev's own partial.
+None outstanding.
 
 ### Medium
-
-**M1. Search-container heap size is hardcoded** — `environments/includes/elasticsearch.base.yml:15`, `environments/includes/opensearch.base.yml:15`
-
-- *What:* Both partials set the heap as a literal: `-Xms64m -Xmx512m`. Every other tunable in these
-  files (image version, cluster options) is parameterised with `${...}`; the heap is not.
-- *Why it matters:* 512 MB is not enough for a large catalog. The container is OOM-killed part way
-  through indexing and the visible symptom is a connection error from the application, which points
-  the investigation at configuration or networking rather than at memory. Raising it currently means
-  editing RollDev's own files, which an upgrade overwrites.
-- *Suggested fix:* `${ELASTICSEARCH_JAVA_OPTS:--Xms64m -Xmx512m}` and
-  `${OPENSEARCH_JAVA_OPTS:--Xms64m -Xmx512m}`, with matching schema entries in `utils/config.sh`.
 
 **M2. No preflight/diagnostic command** — new command
 
@@ -74,14 +46,6 @@ Adapted from the usual defect scale, since these are gaps rather than bugs:
   the configured search engine answers and accepts an index, and the host has disk headroom; exits
   non-zero with a machine-readable summary. This composes well with H1 — the healthchecks it needs
   are the same ones.
-
-**M5. No capability query for scripting** — `utils/registry.sh`
-
-- *What:* There is no supported way to ask whether a command exists before depending on it.
-- *Why it matters:* Automation that must degrade gracefully across RollDev versions currently parses
-  the help listing, which is presentation output and not a contract.
-- *Suggested fix:* `roll has-command <name>` communicating through its exit code, or
-  `roll registry list --format json`. The registry already discovers commands, so the data exists.
 
 ### Low
 

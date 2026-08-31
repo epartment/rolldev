@@ -341,23 +341,6 @@ boundary problems below all cost maintenance time rather than correctness.
   `restore-full` as a two-line alias for backwards compatibility. `utils/` is already sourced from
   `bin/roll`, so a fifth library needs one line there.
 
-**MB2. `roll registry`'s reporting layer describes metadata that is never collected** —
-`utils/registry.sh:68-92`
-
-- *What:* `extractCommandMetadata` is a stub: the `description` branch returns an empty string and
-  the `category` branch returns the constant `general`, both with a `# Simple approach - just return
-  empty for now` comment. Roughly 200 lines of `utils/registry.sh` and `commands/registry.cmd` exist
-  to filter, group, count and export those two fields.
-- *Why it matters:* `roll registry list`, `search`, `categories`, `stats`, `info` and `export` all
-  report a single category (`global`) and blank descriptions, so `roll registry stats` on a stock
-  install prints `global : 48 commands` and nothing else useful. The `.help` files that would supply
-  the descriptions already exist and are already located by the registry.
-- *Suggested fix:* Either implement the extraction — parse a `## @description:` / `## @category:`
-  comment header from the `.help` file, which requires adding those headers to the 40 built-in help
-  files — or delete the category and description arrays and the subcommands that consume them,
-  keeping `list`, `info`, `paths`, `validate` and `export`. The half-built version is worse than
-  either: it makes the CLI look as though the feature works.
-
 #### Low
 
 **LB1. `commands/magento2-init.cmd` is a project generator inside a command file** — 784 lines
@@ -624,9 +607,6 @@ None found.
 - *Suggested fix:* Already addressed by the marker. Keep it: anything below
   `<!-- include_open_stop -->` in this file is repository-facing and does not appear on the site. If
   the include ever needs to cover more, move the marker rather than removing it.
-
-**M6. `roll registry`'s metadata layer is a stub** — see boundary finding
-[**MB2**](#boundary-findings).
 
 ### Low
 
