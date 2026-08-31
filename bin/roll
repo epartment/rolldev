@@ -17,6 +17,7 @@ source "${ROLL_DIR}/utils/interact.sh"
 source "${ROLL_DIR}/utils/config.sh"
 source "${ROLL_DIR}/utils/registry.sh"
 source "${ROLL_DIR}/utils/env.sh"
+source "${ROLL_DIR}/utils/backup.sh"
 
 ## verify docker is installed
 if ! which docker >/dev/null; then

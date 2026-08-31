@@ -99,17 +99,6 @@ if [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; then
     DUPLICATE_NAME="${POSITIONAL_ARGS[0]}"
 fi
 
-function logMessage() {
-    [[ $DUPLICATE_QUIET -eq 1 ]] && return
-    local level="$1"
-    shift
-    case "$level" in
-        INFO) info "$@" ;;
-        SUCCESS) success "$@" ;;
-        WARNING) warning "$@" ;;
-        ERROR) error "$@" ;;
-    esac
-}
 
 function validateDuplicateName() {
     local name="$1"

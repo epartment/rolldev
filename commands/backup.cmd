@@ -160,35 +160,7 @@ if (( ${#BACKUP_COMMAND_PARAMS[@]} == 0 )); then
     BACKUP_COMMAND_PARAMS=("all")
 fi
 
-function showProgress() {
-    [[ $PROGRESS -eq 0 ]] && return
-    local current=$1
-    local total=$2
-    local description="$3"
-    local percent=$((current * 100 / total))
-    local bar_length=30
-    local filled_length=$((percent * bar_length / 100))
-    
-    printf "\r["
-    printf "%*s" $filled_length | tr ' ' '='
-    printf "%*s" $((bar_length - filled_length)) | tr ' ' '-'
-    printf "] %d%% %s" $percent "$description"
-    
-    # Always end with a newline for clean output
-    echo ""
-}
 
-function logMessage() {
-    [[ $BACKUP_QUIET -eq 1 ]] && return
-    local level="$1"
-    shift
-    case "$level" in
-        INFO) info "$@" ;;
-        SUCCESS) success "$@" ;;
-        WARNING) warning "$@" ;;
-        ERROR) error "$@" ;;
-    esac
-}
 
 function validateCompression() {
     case "$BACKUP_COMPRESSION" in
