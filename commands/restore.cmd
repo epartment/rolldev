@@ -25,8 +25,11 @@ RESTORE_LEGACY_MIGRATION=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)
-            roll restore --help
-            exit 0
+            ## Do NOT re-invoke `roll restore --help` here. `restore` is on roll's ROLL_CMD_ANYARGS
+            ## list, so roll's own parser stops at --help and passes it straight through to this
+            ## script - re-invoking roll lands right back on this branch and recurses forever.
+            ## usage.cmd renders ROLL_CMD_HELP (restore.help) and exits on its own.
+            source "${ROLL_DIR}/commands/usage.cmd"
             ;;
         --backup-id=*|--backup=*)
             RESTORE_BACKUP_ID="${1#*=}"
@@ -101,29 +104,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-# Utility functions for restore operations
-function promptPassword() {
-    local prompt="$1"
-    local password=""
-    
-    # Don't prompt in quiet mode or non-interactive shells
-    if [[ $RESTORE_QUIET -eq 1 ]] || [[ ! -t 0 ]]; then
-        error "Password required but running in non-interactive mode. Use --decrypt=password instead."
-        exit 1
-    fi
-    
-    echo -n "$prompt: " >&2
-    read -s password
-    echo >&2
-    
-    if [[ -z "$password" ]]; then
-        error "Password cannot be empty"
-        exit 1
-    fi
-    
-    echo "$password"
-}
 
 function detectEncryptedBackup() {
     local backup_path="$1"
@@ -805,16 +785,17 @@ function performRestore() {
         fi
     fi
     
-    # Detect if backup is encrypted and handle password prompting
+    # Detect if backup is encrypted and handle password prompting. Quiet mode is an explicit
+    # request for no interaction, so it stays a hard error even when stdin is a terminal.
     if detectEncryptedBackup "$backup_path"; then
-        if [[ -z "$RESTORE_DECRYPT" ]]; then
-            # No password provided, prompt for it
-            RESTORE_DECRYPT=$(promptPassword "Encrypted backup detected. Enter decryption password")
-        elif [[ "$RESTORE_DECRYPT" == "PROMPT" ]]; then
-            # Explicit prompt requested
-            RESTORE_DECRYPT=$(promptPassword "Enter decryption password")
+        if [[ -z "$RESTORE_DECRYPT" ]] || [[ "$RESTORE_DECRYPT" == "PROMPT" ]]; then
+            if [[ $RESTORE_QUIET -eq 1 ]]; then
+                fatal "Password required but running in quiet mode. Use --decrypt=<password> instead."
+            fi
+            RESTORE_DECRYPT=""
+            promptPassword RESTORE_DECRYPT "--decrypt=<password>" "Encrypted backup detected. Enter decryption password"
         fi
-        
+
         if [[ -z "$RESTORE_DECRYPT" ]]; then
             logMessage ERROR "Encrypted backup requires a password. Use --decrypt=password or --decrypt to prompt."
             exit 1

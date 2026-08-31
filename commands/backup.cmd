@@ -160,40 +160,6 @@ if (( ${#BACKUP_COMMAND_PARAMS[@]} == 0 )); then
     BACKUP_COMMAND_PARAMS=("all")
 fi
 
-# Utility functions for backup operations
-function promptPassword() {
-    local prompt="$1"
-    local password=""
-    local confirm=""
-    
-    # Don't prompt in quiet mode or non-interactive shells
-    if [[ $BACKUP_QUIET -eq 1 ]] || [[ ! -t 0 ]]; then
-        error "Password required but running in non-interactive mode. Use --encrypt=password instead."
-        exit 1
-    fi
-    
-    echo -n "$prompt: " >&2
-    read -s password
-    echo >&2
-    
-    if [[ -z "$password" ]]; then
-        error "Password cannot be empty"
-        exit 1
-    fi
-    
-    # Confirm password for security
-    echo -n "Confirm password: " >&2
-    read -s confirm
-    echo >&2
-    
-    if [[ "$password" != "$confirm" ]]; then
-        error "Passwords do not match"
-        exit 1
-    fi
-    
-    echo "$password"
-}
-
 function showProgress() {
     [[ $PROGRESS -eq 0 ]] && return
     local current=$1
@@ -731,9 +697,14 @@ function performBackup() {
     validateCompression || exit 1
     resolveBackupOutputDir
     
-    # Handle interactive password prompt if needed
+    # Handle interactive password prompt if needed. Quiet mode is an explicit request for no
+    # interaction, so it stays a hard error even when stdin happens to be a terminal.
     if [[ "$BACKUP_ENCRYPT" == "PROMPT" ]]; then
-        BACKUP_ENCRYPT=$(promptPassword "Enter encryption password")
+        if [[ $BACKUP_QUIET -eq 1 ]]; then
+            fatal "Password required but running in quiet mode. Use --encrypt=<password> instead."
+        fi
+        BACKUP_ENCRYPT=""
+        promptPassword BACKUP_ENCRYPT "--encrypt=<password>" "Enter encryption password" "Confirm encryption password"
     fi
     
     # Detect enabled services

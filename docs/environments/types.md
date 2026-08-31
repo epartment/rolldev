@@ -2,6 +2,8 @@
 
 RollDev currently supports three environment types. These types are passed to `env-init` when configuring a project for local development for the first time. This list of environment types can also be seen by running `roll env-init --help` on your command line. The `docker-compose` configuration used to assemble each environment type can be found in the [environments directory](https://github.com/epartment/rolldev/tree/master/environments) on Github.
 
+`roll env-init` follows RollDev's flag/env-first prompt convention: if you pass a project name and type as arguments (`roll env-init myproject magento2`), it runs non-interactively and never prompts. Leave either out on a terminal and it prompts for the missing value; leave either out with no terminal attached (CI, a script) and it errors naming the argument you need to supply instead of hanging. Re-running `env-init` where a `.env.roll` already exists normally asks whether to overwrite it; set `ROLL_ENV_INIT_FORCE=1` to overwrite without prompting.
+
 ## Local
 
 The `local` environment type is a network-only container — it provides no services of its own. Use it when you need RollDev's networking layer (Traefik, dnsmasq, the shared tunnel) but want to define your own services in a `.roll/roll-env.yml` file.
