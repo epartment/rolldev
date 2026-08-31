@@ -13,12 +13,22 @@ ROLL_USAGE=$(cat <<EOF
   overwritten (--overwrite-tables). Any additional myloader flags are passed
   through untouched and override the injected defaults.
 
+  Restoring a MySQL 8 dump into RollDev's MariaDB container commonly fails on the
+  ENCRYPTION table option and utf8mb4_0900_* collations, both unsupported by
+  MariaDB; myloader reports both as an unhelpful "Trace/breakpoint trap (core
+  dumped)". Pass \033[32m--normalize-source-ddl\033[0m to strip/remap these in the dump's
+  *-schema*.sql files before loading (data files are never touched). Without the
+  flag, a failed run is inspected for these two signatures and, if found, a hint
+  naming the flag is printed.
+
 \033[33mExamples:\033[0m
   roll myloader
   roll myloader --threads=4
   roll myloader --directory=var/dump-20260602
+  roll myloader --normalize-source-ddl
 
 \033[33mOptions:\033[0m
-  -h, --help        Display this help menu
+  -h, --help                  Display this help menu
+  --normalize-source-ddl      Strip/remap MySQL-8-only DDL in *-schema*.sql before loading
 EOF
 )
