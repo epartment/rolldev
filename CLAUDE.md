@@ -2,71 +2,121 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What this is
+## Read the README first
 
-RollDev is a CLI (pure Bash) that orchestrates Docker development environments for PHP frameworks/CMS (Magento 1/2, Laravel, Symfony, TYPO3, Shopware, WordPress, Akeneo, plain PHP, Vue.js). There is no application code — it is a wrapper that assembles `docker compose` invocations from layered YAML fragments and runs commands inside containers. Distributed primarily via Homebrew (`epartment/roll/roll`).
+[README.md](README.md) is the authoritative description of this repository and is kept current. It is
+not a marketing page — it documents the architecture, the platform contract, the conventions, and the
+known defects, with `file:line` citations. **Read the sections relevant to your task before editing**,
+rather than re-deriving the same facts from the source:
 
-This repo: [github.com/epartment/rolldev](https://github.com/epartment/rolldev).
+| Question | README section |
+|---|---|
+| What is this, what is the stack, what versions | [Stack](README.md#stack) |
+| How do I install/run it, which hosts are supported | [Getting started](README.md#getting-started), [Supported platforms](README.md#supported-platforms) |
+| How does dispatch, the command registry, or config loading work | [Architecture](README.md#architecture) |
+| How is a `docker compose` invocation assembled from YAML fragments | [How a compose invocation is assembled](README.md#how-a-compose-invocation-is-assembled) |
+| Which environment types and service toggles exist, and what each actually provides | [Environments](README.md#environments) |
+| What are the commands people run | [Common tasks](README.md#common-tasks) |
+| What are the rules for editing this codebase | [Conventions](README.md#conventions) |
+| Which components are too big, duplicated, or wrongly coupled | [Module boundaries & coupling](README.md#module-boundaries--coupling) |
+| Is this behaviour a bug, and is it already known | [Known issues & improvement points](README.md#known-issues--improvement-points) |
+| Was this already investigated and found correct | [Audited and clean](README.md#audited-and-clean) |
+| A symptom I am debugging | [Troubleshooting](README.md#troubleshooting) |
 
-### Container images live in a separate repo
-The Docker images this CLI runs (`php-fpm`, `php-fpm-magento2`, `db`/`mariadb`/`mysql`, `nginx`, etc.) are **not built here** — they are built in a separate "images" repo ([github.com/epartment/images](https://github.com/epartment/images): Dockerfiles + GitHub Actions matrix) and published to `ghcr.io/epartment/roll`. This repo only references them by tag. So any change that requires a binary/package/extension to exist *inside* a container (e.g. adding a CLI tool, a PHP extension baked into the image, changing the base OS) must be made in the images repo, not here.
+Everything below is guidance that belongs to *working on* the repository rather than to the repository
+itself, so it is not duplicated in the README.
 
-That repo is not part of this checkout and its local path varies per machine. **If a task needs the images repo, ask the user for its local directory** rather than guessing — there is no fixed/derivable location. (When known on this machine it has been at `/Volumes/Case-sensitive/Development/Other/images`, but confirm — don't assume.)
+## Before you start
 
-## Commands
+- **Check the known defects before diagnosing anything.** Several surprising behaviours are already
+  documented with a verified root cause in
+  [Known issues & improvement points](README.md#known-issues--improvement-points) — a red ShellCheck
+  run, `roll db dump` failing, `roll registry categories` dying on macOS, magento2 environments coming
+  up without Varnish or a search engine, images never refreshing on Linux. Do not re-derive them, and
+  do not report one as a new discovery.
+- **Check [Audited and clean](README.md#audited-and-clean) before investigating something that looks
+  wrong.** It records what was checked and found correct, including two things that read as bugs and
+  are not.
+- **Check [FEATURE-REQUESTS.md](FEATURE-REQUESTS.md) before proposing an improvement.** It records
+  gaps found while driving RollDev unattended, with severities and citations, plus a "checked, and
+  already covered" table. Its `H1`/`M1`/`L1` numbering is independent of the README's.
 
-- **Lint (the only CI test):** `shellcheck commands/*.cmd utils/*.sh`. This runs in `.github/workflows/shellcheck.yml` on any change to `commands/*.cmd` or `utils/*.sh`. There is no unit-test suite — run shellcheck locally before pushing changes to those files.
-- **Run the CLI from source:** `./bin/roll <command>`. The `version` file holds the current version string.
-- **Two orchestration scopes:**
-  - `roll svc <up|down|...>` — global shared services (Traefik reverse proxy, tunnel, mailhog, optional portainer/startpage). Compose project name is always `roll`, project dir `~/.roll`.
-  - `roll env <up|down|...>` — the per-project environment, run from inside a project dir containing `.env.roll`.
+## Non-negotiables when editing
 
-## Architecture
+These are the constraints most easily broken by a plausible-looking edit. Each is explained in
+[Conventions](README.md#conventions) — this is the checklist, not the explanation.
 
-### Entry point and dispatch (`bin/roll`)
-`bin/roll` resolves its own real path (following symlinks — important for the Homebrew symlink install), then sources the four util libs in order: `core.sh`, `config.sh`, `registry.sh`, `env.sh`. It verifies Docker + docker compose ≥ 2.2.3, then dispatches: the first arg is looked up via `findCommand` (registry), and the matching `commands/<verb>.cmd` is **sourced** (not exec'd) so it runs in the same shell with all globals/functions available. Argument parsing puts positional args in `ROLL_PARAMS`; commands in the `ROLL_CMD_ANYARGS` list (svc, env, db, composer, magento, etc.) pass through all flags untouched so they reach docker/the container.
+1. **Bash 3.2.** No associative arrays, no `${var^}`, no bare `mapfile`. macOS ships bash 3.2.57, so
+   a bash-4 construct passes CI and fails for most users.
+2. **macOS *and* Linux.** Both are required targets and they differ in ways that matter; see the
+   difference table in [Supported platforms](README.md#supported-platforms). CI runs Ubuntu only.
+3. **Keep the sourcing guard** `[[ ! ${ROLL_DIR} ]] && … exit 1` at the top of every `.cmd` and util
+   script.
+4. **`x=$((x + 1))`, never `((x++))`.** `bin/roll` runs under `set -e` and sources command bodies into
+   that shell, so a statement returning non-zero kills the CLI silently.
+5. **Register new config in the schema** (`initConfigSchema` in `utils/config.sh`). Do not rely on a
+   `${VAR:-default}` fallback inside a YAML fragment — the exported schema value wins, which is why
+   eight such fallbacks in `environments/` are currently dead code.
+6. **Use the messaging helpers** from `utils/core.sh`, not raw `echo`.
 
-### Command registry (`utils/registry.sh`)
-Commands are discovered, not hardcoded. Each command is a pair: `<name>.cmd` (the script) and `<name>.help` (usage text). `initializeRegistry` scans multiple directories by **priority** (lower number wins), letting users override built-in commands:
-1. Project-local `${ROLL_ENV_PATH}/.roll/commands` and env-type-specific dirs (priority 1)
-2. `~/.roll/commands`, `~/.roll/reclu` (user overrides, priority 2–3)
-3. `${ROLL_DIR}/commands` (built-in, lowest priority 4)
+## Container images are built in a separate repository
 
-Env-type subdirs like `commands/magento2/` provide commands only available inside that environment type. Written for **Bash 3.2** (macOS default) — uses parallel indexed arrays instead of associative arrays everywhere. Maintain that constraint.
+The Docker images this CLI runs — `php-fpm` and its `magento1`/`magento2`/`wordpress`/`node` variants,
+`mariadb`, `mysql`, `nginx`, `elasticsearch`, `opensearch`, `redis`, `varnish`, `rabbitmq`, `dnsmasq` —
+are **not built here**. They live in [github.com/epartment/images](https://github.com/epartment/images)
+(Dockerfiles plus a GitHub Actions matrix) and are published to `ghcr.io/epartment/roll`. This
+repository only references them by tag.
 
-### Configuration (`utils/config.sh`, `utils/env.sh`)
-A project is identified by an `.env.roll` file. `locateEnvPath` walks up from `pwd` to find it (and resolves it if it's a symlink to a parent stack). `.env.roll` must define `ROLL_ENV_NAME` and `ROLL_ENV_TYPE`. `config.sh` holds the **config schema** (`initConfigSchema`) — the authoritative list of every `ROLL_*`/service variable, its type, and default. When adding a new service toggle or version variable, register it in the schema here.
+So any change requiring a binary, package, or PHP extension to exist *inside* a container — adding a
+CLI tool, baking in a PHP extension, changing a base image — must be made in the images repository,
+not here. Nothing in `commands/` or `environments/` can add a tool to a container.
 
-### How a docker compose invocation is assembled (`env.cmd` + `appendEnvPartialIfExists`)
-This is the core mechanism. `env.cmd` reads the service toggles (`ROLL_NGINX`, `ROLL_DB`, `ROLL_REDIS`, `ROLL_ELASTICSEARCH`, `ROLL_VARNISH`, etc.) and, for each enabled one, appends `-f <fragment>.yml` args by calling `appendEnvPartialIfExists`. That function searches a fixed precedence chain and includes **every** match found (later ones layer on top):
-```
-environments/includes/<name>.base.yml
-environments/includes/<name>.<subtype>.yml      # subtype = darwin | linux
-environments/<envtype>/<name>.base.yml
-environments/<envtype>/<name>.<subtype>.yml
-~/.roll/environments/...   (same four, user overrides)
-```
-So a YAML fragment can be shared (`environments/includes/`), specialized per env type (`environments/magento2/`), and/or specialized per OS (`.darwin.yml` / `.linux.yml`). `env.cmd` also sets env-type-specific defaults (e.g. magento2 turns on varnish/elasticsearch/rabbitmq; magento1 picks an nginx template) before assembling. Final command: `docker compose --env-file .env.roll --project-directory <project> -p $ROLL_ENV_NAME -f ... <params>`.
+That repository is not part of this checkout and its local path varies per machine. **If a task needs
+it, ask the user for the local directory** rather than guessing; there is no derivable location.
 
-`environments/<type>/init.env` seeds a new project's `.env.roll` (via `roll env-init`) with sensible per-type defaults (versions, enabled services).
+## Verifying a change
 
-### Networking / peered services (`utils/core.sh`)
-Global services in `DOCKER_PEERED_SERVICES` (traefik, tunnel, mailhog) live on the `roll` compose project but must be `docker network connect`ed into each project's network on `env up` (and disconnected on `down`). Traefik routes by `*.test` domains; SSL certs are generated under `~/.roll/ssl`.
+There is no unit-test suite. What is available:
 
-### Container exec pattern
-User-facing "run X in the container" commands (`shell`, `cli`, `composer`, `magento`, `node`, `npm`, etc.) are thin wrappers that ultimately call `roll env exec -u www-data <container> ...`. Default container is `php-fpm`, overridable via `ROLL_ENV_SHELL_CONTAINER`. `root*` variants drop the `-u www-data`.
+- **ShellCheck**, the only CI gate: `shellcheck commands/*.cmd utils/*.sh`. Note that it **already
+  fails** on a clean checkout (finding **H1** in the README), so a red run is not evidence that your
+  change broke something. Capture the finding count before your change and compare, or scope the run
+  to the files you touched. The gate also does not cover `commands/magento2/`, `commands/wordpress/`
+  or the `.help` files (finding **L9**), so lint those explicitly if you edit them.
+- **Running the CLI from source:** `./bin/roll <command>`. On macOS invoke it as
+  `/bin/bash ./bin/roll <command>` when checking Bash 3.2 compatibility, so the system bash is
+  exercised rather than a newer one from `PATH`.
+- **Commands that need no Docker daemon** and are useful smoke tests: `roll version`,
+  `roll config schema`, `roll registry validate`, `roll registry paths`, and `roll env-init` into a
+  temporary directory followed by `roll config validate`.
+- **Loading the config in isolation**, to check what a `.env.roll` actually resolves to: source
+  `utils/core.sh`, `utils/config.sh`, `utils/registry.sh`, `utils/env.sh` in that order with
+  `ROLL_DIR` and `ROLL_HOME_DIR` set, then call `loadEnvConfig <project-path>` and print the
+  variables. This is how the effective-defaults findings in the README were confirmed.
 
-### macOS file sync
-On Darwin, file sync uses **Mutagen** (`environments/<type>/<type>.mutagen.yml`, overridable by `.roll/mutagen.yml`). `env.cmd` automatically starts/pauses/resumes/stops the sync session around `up`/`start`/`stop`/`down`. Linux mounts directly (no Mutagen).
+Do not claim a change is verified on the strength of a syntax check alone: most of the defects in the
+README's findings list are syntactically valid shell.
 
-## Conventions when editing
+## Blast radius
 
-- Every `.cmd` and util script starts with the guard `[[ ! ${ROLL_DIR} ]] && ... exit 1` — they are meant to be sourced by `bin/roll`, never run directly. Keep this guard on new scripts.
-- Use the messaging helpers from `core.sh` (`fatal`, `error`, `warning`, `info`, `success`, `box*`) rather than raw echo for user-facing output.
-- Cross-platform: gate OS-specific logic on `$OSTYPE` (`darwin*` vs Linux) and use `sed_inplace` from `core.sh` instead of `sed -i` directly (BSD vs GNU sed differ).
-- A new command = add `commands/<name>.cmd` + `commands/<name>.help`; the registry picks it up automatically, no central list to edit (but if it should accept arbitrary pass-through flags, add it to `ROLL_CMD_ANYARGS` in `bin/roll`).
-- A new service = add YAML fragment(s) under `environments/includes/` (and per-type overrides), wire a `ROLL_<SERVICE>` toggle into `env.cmd`'s assembly block, and register the variable + default in `config.sh`'s schema.
-- Default image registry is `ghcr.io/epartment/roll`, overridable via `ROLL_IMAGE_REPOSITORY`.
+RollDev is distributed via Homebrew (`epartment/roll/roll`) and installs itself into `~/.roll` on
+first run, so a released change reaches every installed machine on the next `brew upgrade`, and
+`assertRollDevInstall` (`utils/install.sh:43`) re-runs `roll install` whenever `bin/roll` is newer than
+`~/.roll/.installed`. When changing anything in `commands/install.cmd`, `utils/install.sh`, or the
+`~/.roll` layout, verify the **upgrade** path and the **fresh-install** path separately — "it
+self-installs, so it is fine" is not an analysis. Several install steps require `sudo` and touch
+host-level state (`/etc/resolver/test`, `/etc/ssh/ssh_config`, the system trust store).
 
-## Docs
-User-facing documentation lives in `docs/` (published to `epartment.github.io/rolldev` via GitHub Pages). Update it when changing user-visible behavior.
+## Keeping documentation in sync
+
+- **[README.md](README.md)** — update it in the same change as the behaviour it describes. When a
+  finding in [Known issues & improvement points](README.md#known-issues--improvement-points) is
+  fixed, **remove** it rather than marking it done; git history is the record. Note that the section
+  above `<!-- include_open_stop -->` is inlined into the published documentation home page by
+  `docs/index.md`, so keep that marker in place.
+- **`docs/`** — user-facing documentation, built with Sphinx and published to
+  [epartment.github.io/rolldev](https://epartment.github.io/rolldev) on push to `main`. Update it for
+  any user-visible behaviour change. The README is the contributor-facing document; `docs/` is the
+  user-facing one, and they should not contradict each other.
+- **[FEATURE-REQUESTS.md](FEATURE-REQUESTS.md)** — add an entry when you find a gap you are not
+  fixing; move it out when it is implemented.
