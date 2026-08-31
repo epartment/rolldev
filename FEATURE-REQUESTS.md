@@ -31,22 +31,6 @@ Adapted from the usual defect scale, since these are gaps rather than bugs:
 
 ### High
 
-**H1. Service readiness gating — `env up` returns before services accept connections** — `commands/env.cmd:201`
-
-- *What:* No service definition in `environments/` declares a `healthcheck:` (verified —
-  `grep -rn "healthcheck" environments/` matches nothing), and `env up` does not pass docker
-  compose's `--wait`. `roll env up` therefore returns as soon as containers are *started*, not when
-  they are *usable*.
-- *Why it matters:* Any command run straight after `env up` races the services it needs. The search
-  containers are the worst case because they take the longest to become ready: an application step
-  that follows immediately fails with `No alive nodes found in your cluster`, which reads like a
-  misconfiguration rather than a race. It is non-deterministic, and it gets worse under parallel
-  load, which is exactly when it is hardest to reproduce by hand.
-- *Suggested fix:* Add `healthcheck:` blocks to the `db`, `opensearch`, `elasticsearch` and `redis`
-  partials in `environments/includes/`, then support `roll env up --wait`. Docker compose's native
-  `--wait` already implements the waiting; it just needs healthchecks defined to be meaningful, so
-  the healthchecks are the substantive part of this request.
-
 **H2. No supported way to run an environment with no published host ports** — `environments/includes/browsersync.base.yml:3-5`
 
 - *What:* When `ROLL_BROWSERSYNC=1`, that partial publishes `${BROWSERSYNC_PORT_WEB:-3000}` and
@@ -90,14 +74,6 @@ Adapted from the usual defect scale, since these are gaps rather than bugs:
   the configured search engine answers and accepts an index, and the host has disk headroom; exits
   non-zero with a machine-readable summary. This composes well with H1 — the healthchecks it needs
   are the same ones.
-
-**M4. No machine-readable output from RollDev's own commands** — `commands/status.cmd`
-
-- *What:* `roll status` renders ANSI-formatted output intended for a terminal.
-- *Why it matters:* Automation ends up parsing formatted text, which breaks on any cosmetic change.
-  This applies to RollDev's own aggregate commands; anything that passes straight through to docker
-  compose (for example `roll env ps`) already inherits compose's `--format json`.
-- *Suggested fix:* `--format json` for `status` and `describe`.
 
 **M5. No capability query for scripting** — `utils/registry.sh`
 
