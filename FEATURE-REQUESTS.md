@@ -91,20 +91,6 @@ Adapted from the usual defect scale, since these are gaps rather than bugs:
   non-zero with a machine-readable summary. This composes well with H1 — the healthchecks it needs
   are the same ones.
 
-**M3. No MySQL 8 to MariaDB DDL normalisation for `myloader`** — `commands/magento2/myloader.cmd`
-
-- *What:* The wrapper injects connection and directory defaults and forwards every other flag
-  untouched (verified by reading the file). It does nothing about source/target dialect differences.
-- *Why it matters:* Restoring a MySQL 8 dump into RollDev's MariaDB container is a common path, and
-  two constructs in such dumps abort the load: the `ENCRYPTION='N'` table option (MariaDB: `ERROR
-  1911: Unknown option 'ENCRYPTION'`) and `utf8mb4_0900_*` collations (`ERROR 1273: Unknown
-  collation`). Both terminate `myloader` with `Trace/breakpoint trap (core dumped)`, which gives no
-  indication of the real cause. Every consumer has to discover and solve this independently.
-- *Suggested fix:* An opt-in `--normalize-source-ddl` flag that rewrites `*-schema*.sql` (strip the
-  `ENCRYPTION` option, remap `utf8mb4_0900_*` to `utf8mb4_general_ci`) before loading. Only the DDL
-  files should be touched, never the data files. If rewriting is considered out of scope, detecting
-  those two error codes and printing the cause would remove most of the cost.
-
 **M4. No machine-readable output from RollDev's own commands** — `commands/status.cmd`
 
 - *What:* `roll status` renders ANSI-formatted output intended for a terminal.
@@ -123,16 +109,7 @@ Adapted from the usual defect scale, since these are gaps rather than bugs:
 
 ### Low
 
-**L1. No sugar for running a shell one-liner inside a service** — `commands/env.cmd`
-
-- *What:* `roll env exec <service> <cmd> > file` performs the redirect in the *host* shell, not in
-  the container. The command succeeds and writes to the wrong place, with nothing to indicate it.
-  The correct form is `roll env exec -T <service> sh -c '<command>'`.
-- *Why it matters:* Silent wrong-place writes are hard to notice, particularly for things like
-  appending to a file inside a container, where the operation appears to succeed.
-- *Suggested fix:* `roll env sh <service> '<command>'` that wraps the argument in `sh -c` inside the
-  container. Low severity because the workaround is reliable and only one flag away — but it is a
-  footgun worth either sugaring or documenting explicitly.
+None found.
 
 ## Checked, and already covered
 

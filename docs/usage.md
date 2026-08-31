@@ -43,6 +43,10 @@ Flush varnish:
 
      roll env exec -T varnish varnishadm 'ban req.url ~ .' 
 
+Run a shell command inside a container (with proper redirect handling):
+
+    roll env sh php-fpm 'cat app/etc/env.php | grep MODE'
+
 Connect to redis:
 
     roll redis

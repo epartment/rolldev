@@ -192,6 +192,26 @@ if [[ "${ROLL_PARAMS[0]}" == "describe" ]]; then
     exit $?
 fi
 
+## handle sh sugar for shell commands in containers
+if [[ "${ROLL_PARAMS[0]}" == "sh" ]]; then
+    if (( ${#ROLL_PARAMS[@]} < 3 )); then
+        fatal "roll env sh requires a service name and command: roll env sh <service> '<command>'"
+    fi
+    ## the command must arrive as ONE argument; refusing extra words is deliberate, because
+    ## silently running only the first of them is exactly the confusion this subcommand exists
+    ## to prevent
+    if (( ${#ROLL_PARAMS[@]} > 3 )); then
+        fatal "roll env sh takes a single quoted command: roll env sh ${ROLL_PARAMS[1]} '${ROLL_PARAMS[*]:2}'"
+    fi
+    ## env is in ROLL_CMD_ANYARGS, so roll's parse loop stops at the first dash-prefixed word and
+    ## leaves it in "$@" instead of ROLL_PARAMS; catch those here or they reach sh -c as $0
+    if (( $# > 0 )); then
+        fatal "roll env sh takes a single quoted command: roll env sh ${ROLL_PARAMS[1]} '${ROLL_PARAMS[2]} $*'"
+    fi
+    # Transform: sh <service> '<command>' -> exec -T <service> sh -c '<command>'
+    ROLL_PARAMS=("exec" "-T" "${ROLL_PARAMS[1]}" "sh" "-c" "${ROLL_PARAMS[2]}")
+fi
+
 ## disconnect peered service containers from environment network
 if [[ "${ROLL_PARAMS[0]}" == "down" ]]; then
     disconnectPeeredServices "$(renderEnvNetworkName)"
