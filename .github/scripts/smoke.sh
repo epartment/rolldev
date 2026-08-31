@@ -55,4 +55,6 @@ trap cleanup EXIT
   "${ROLL_BIN[@]}" config validate
 )
 
+"$(dirname "$0")/test-interact.sh" < /dev/null
+
 echo "Smoke test passed (${MODE} mode)."
