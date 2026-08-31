@@ -35,17 +35,7 @@ None outstanding.
 
 ### Medium
 
-**M2. No preflight/diagnostic command** — new command
-
-- *What:* There is no single command that answers "is this environment actually fit to run?".
-- *Why it matters:* Automation discovers problems as opaque Docker or application errors, often deep
-  into an expensive run — a port already bound, a search cluster that is up but refusing writes, a
-  host with no disk headroom. Each surfaces as a different downstream error message that names the
-  wrong layer.
-- *Suggested fix:* `roll env doctor` that checks services are healthy, required host ports are free,
-  the configured search engine answers and accepts an index, and the host has disk headroom; exits
-  non-zero with a machine-readable summary. This composes well with H1 — the healthchecks it needs
-  are the same ones.
+None outstanding.
 
 ### Low
 

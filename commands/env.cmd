@@ -122,6 +122,12 @@ if [[ "${ROLL_PARAMS[0]}" == "describe" ]]; then
     exit $?
 fi
 
+## handle doctor subcommand
+if [[ "${ROLL_PARAMS[0]}" == "doctor" ]]; then
+    source "${ROLL_DIR}/commands/doctor.cmd"
+    exit $?
+fi
+
 ## handle sh sugar for shell commands in containers
 if [[ "${ROLL_PARAMS[0]}" == "sh" ]]; then
     if (( ${#ROLL_PARAMS[@]} < 3 )); then

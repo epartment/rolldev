@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+## @description: Diagnose whether the current project environment is fit to run.
+## @category: environment
+
+ROLL_USAGE=$(cat <<EOF
+\033[33mUsage:\033[0m
+  roll doctor
+  roll doctor --format json
+  roll env doctor
+  roll env doctor --format json
+
+\033[33mDescription:\033[0m
+  Checks whether the current project environment is actually fit to run, and reports one line per
+  check instead of letting a problem surface later as an opaque Docker or application error.
+
+\033[33mChecks:\033[0m
+  - env-config       .env.roll for this project loads
+  - docker           the Docker daemon is reachable
+  - container:*      every container this project has is running and its healthcheck (if any)
+                      reports healthy; a container with no healthcheck configured is reported as a
+                      distinct, non-failing state rather than as a failure
+  - port-*           the ports the roll core services need (traefik 80/443, dnsmasq 53) are bound
+                      by those services or free for them to bind
+  - search-engine     the configured search engine (OpenSearch or Elasticsearch) answers
+                      /_cluster/health with a non-red status
+  - search-engine-write
+                      the search engine also accepts a throwaway index write, which catches a
+                      green cluster that cannot actually be written to
+  - disk             the Docker data root has at least 5GB free
+
+\033[33mExit status:\033[0m
+  0  every check passed
+  1  one or more checks failed (see the detail of the failing check)
+
+\033[33mOptions:\033[0m
+  -h, --help          Display this help menu
+  --format human      Human-readable report (default)
+  --format json       One JSON object with a "checks" array of {check, ok, detail} and an
+                       overall "ok"; no ANSI escapes and no credentials
+EOF
+)
