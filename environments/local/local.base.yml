@@ -1,0 +1,3 @@
+# The local environment type is network-only. Bring your own .roll/roll-env.yml to define services.
+# Service toggles default to 1, so set ROLL_NGINX, ROLL_DB, ROLL_REDIS to 0 unless you provide those
+# services in your custom roll-env.yml.

@@ -131,6 +131,21 @@ Adapted from the usual defect scale, since these are gaps rather than bugs:
 - *Suggested fix:* Establish which of the two was intended, delete the other, and drop the
   `disable=SC2317` line from `.shellcheckrc` so the check protects the file again.
 
+**L3. `local` environment type fails compose render when service toggles are at default** — `environments/local/local.base.yml`, `commands/env.cmd:51,112`
+
+- *What:* The `local` environment type skips the `php-fpm` partial but still appends nginx, db, and
+  redis partials when their toggles are on. Since those toggles default to `1`, a bare
+  `roll env-init x local && roll env config` fails with `service "php-fpm" has neither an image
+  nor a build context specified`, because an appended fragment declares a dependency on php-fpm.
+  **Verified** against a throwaway project pre-milestone-4. The failure predates this release.
+- *Why it matters:* The `local` type advertises itself as usable without providing services, yet it
+  fails unless the user disables toggles or provides services in `.roll/roll-env.yml` — the contract
+  is unclear from the error message, and a user exploring the type hits a confusing failure.
+- *Suggested fix:* No change to code or behaviour; this is documented in `docs/environments/types.md`
+  and the local environment type's default init.env with clear instructions. The type should stay
+  (per decision D7) because users may have existing projects using it. Closing this as Low because
+  the workaround is documented and the type is niche (most environments are magento2/laravel/etc.).
+
 ## Checked, and already covered
 
 Recorded so the next reader does not re-propose them:
