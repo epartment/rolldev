@@ -342,20 +342,6 @@ boundary problems below all cost maintenance time rather than correctness.
   `restore-full` as a two-line alias for backwards compatibility. `utils/` is already sourced from
   `bin/roll`, so a fifth library needs one line there.
 
-#### Low
-
-**LB1. `commands/magento2-init.cmd` is a project generator inside a command file** — 784 lines
-
-- *What:* The largest non-backup command scaffolds a full Magento 2 project: version resolution,
-  Composer authentication, `env-init`, `env up`, installation, sample data.
-- *Why it matters:* It duplicates decisions that `commands/env-init.cmd` and
-  `environments/magento2/init.env` also own, and it is the file most likely to need editing when
-  Magento's installation procedure changes — while being the least testable.
-- *Suggested fix:* Extract the phases (`resolve version`, `create project`, `write env`,
-  `install`) into functions in a `utils/magento2-init.sh`, so each phase can be re-run
-  independently after a failure. This is worth doing when the file is next substantially edited, not
-  on its own.
-
 ## Environments
 
 `roll env-init <name> <type>` writes `.env.roll` with five base lines and appends
@@ -620,7 +606,27 @@ rather than defects, and of the [boundary findings](#boundary-findings) above.
 
 ### High
 
-None found.
+**H1. A restored search-engine volume is unwritable, so Elasticsearch cannot start** —
+`utils/backup.sh` (`restoreVolume`)
+
+- *What:* After `roll restore`, the Elasticsearch data volume comes back with its **root directory
+  owned by uid 0, mode 755**, while the image runs as uid 1000. The service then dies at boot with
+  `AccessDeniedException: /usr/share/elasticsearch/data/.es_temp_file` and
+  `failed to test writes in data directory ... write permission is required`. Entries *inside* the
+  volume keep their original ownership (`_state` is uid 1000), so only the top-level directory
+  created during extraction is wrong.
+- *Verified:* full round trip on a throwaway magento2 project — write a marker row, `roll backup`,
+  drop the table, `roll restore`, `roll env up --wait`. The database restores correctly and the
+  marker comes back; Elasticsearch exits 1 every time.
+- *Why it matters:* the restore reports success, and before this release `roll env up` also
+  returned 0, so the environment looked fine and only failed later when something searched. It is
+  `env up --wait` plus the new healthchecks that make it visible at all — `--wait` correctly exits
+  1 here, which is how this was found.
+- *Not caused by the shared-library extraction:* `restoreVolume` moved verbatim, and the same
+  failure reproduces on the pre-refactor code.
+- *Suggested fix:* after extracting a volume, restore the ownership the service expects rather than
+  leaving the extraction root as root. The uid differs per service, so it belongs alongside
+  `getVolumeMapping` as a per-service property rather than as a blanket `chown`.
 
 ### Medium
 
