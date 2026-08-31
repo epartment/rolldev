@@ -47,6 +47,13 @@ Run a shell command inside a container (with proper redirect handling):
 
     roll env sh php-fpm 'cat app/etc/env.php | grep MODE'
 
+Copy a file from the container to the host, or the whole project back in after a rebuild (see the
+[Copying files between host and container](configuration/copy-container.md) page for the full flag
+list, including cachegrind/trace profile pickup):
+
+    roll copyfromcontainer vendor/autoload.php
+    roll copytocontainer --all
+
 Connect to redis:
 
     roll redis
@@ -62,6 +69,28 @@ Run redis continuous stat mode
 Remove volumes completely:
 
     roll env down -v
+
+Build every Magento 2 frontend theme found under `app/design/frontend`:
+
+    roll theme all
+
+Build or watch one theme directly, without the interactive picker:
+
+    roll theme Vendor/theme build
+    roll theme Vendor/theme watch
+
+## Converting a Warden Project
+
+Run from the root of a Warden project to convert it to RollDev: renames `WARDEN_*` variables to
+`ROLL_*`, moves `.env` to `.env.roll` and `.warden` to `.roll`, validates the result, then signs a
+certificate and starts the environment.
+
+    roll convert
+
+Existing service version pins (including `ELASTICSEARCH_VERSION`) are left as the project had
+them. If a pin is missing afterwards, `roll config validate` reports a warning; run
+`roll config fix-pins` to write one in. `roll convert` does nothing if `.env.roll` already exists
+or `.env` does not reference `WARDEN`.
 
 ## Environment Duplication
 
