@@ -126,6 +126,19 @@ function isOnline() {
   fi
 }
 
+## escape a raw string for embedding as a JSON string value; the caller supplies the
+## surrounding quotes. bash 3.2 safe (pattern substitution only, no external tools).
+## usage: printf '"%s"' "$(jsonEscape "$rawValue")"
+function jsonEscape() {
+  local raw="$1"
+  raw="${raw//\\/\\\\}"
+  raw="${raw//\"/\\\"}"
+  raw="${raw//$'\n'/\\n}"
+  raw="${raw//$'\r'/\\r}"
+  raw="${raw//$'\t'/\\t}"
+  printf '%s' "$raw"
+}
+
 ## cross-platform sed in-place editing function
 ## works on both macOS (BSD sed) and Linux (GNU sed)
 function sed_inplace() {
