@@ -163,9 +163,15 @@ function disconnectPeeredServices {
   done
 }
 
-# Main logic with the timeout function
+# Probe the registry that `svc pull` actually needs, with a 3-second timeout.
+# Accept any HTTP response as proof of reachability (even 401 proves we reached the server).
+# Do not use -f so 401 is treated as successful connection.
 function isOnline() {
-  (ping -q -c1 -t 2 8.8.8.8 &>/dev/null && echo "true") || (ping -q -c1 -t 2 1.1.1.1 &>/dev/null && echo "true") || echo "false"
+  if curl -s -m 3 -o /dev/null "https://ghcr.io/v2/" 2>/dev/null; then
+    echo "true"
+  else
+    echo "false"
+  fi
 }
 
 ## cross-platform sed in-place editing function
