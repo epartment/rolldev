@@ -49,6 +49,11 @@ then
   echo "==> Trusting root certificate (requires sudo privileges)"
   sudo security add-trusted-cert -d -r trustRoot \
     -k /Library/Keychains/System.keychain "${ROLL_SSL_DIR}/rootca/certs/ca.cert.pem"
+elif [[ "$OSTYPE" =~ ^linux ]]; then
+  warning "Could not detect a supported CA trust store (Fedora/CentOS or Debian/Ubuntu) on this" \
+    "Linux distribution. Trust the root certificate manually:" \
+    "${ROLL_SSL_DIR}/rootca/certs/ca.cert.pem" \
+    "See https://epartment.github.io/rolldev/configuration/dns-resolver.html for details."
 fi
 
 ## configure resolver for .test domains on Mac OS only as Linux lacks support
@@ -109,7 +114,7 @@ EOT
   if [[ -z "$(grep -e 'ROLL_SERVICE_PORTAINER' "${ROLL_HOME_DIR}/.env")" ]]; then
     cat >> "${ROLL_HOME_DIR}/.env" <<-EOT
 
-# Set to "0" to disable global Portainer service
+# Set to "1" to enable global Portainer service
 ROLL_SERVICE_PORTAINER=1
 EOT
   fi

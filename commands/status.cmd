@@ -73,14 +73,13 @@ if [[ -n "${rollNetworkId}" ]]; then
     echo
     echo -e "RollDev Services (enabled -> running):"
 
-    portainerEnabled=0
-    startpageEnabled=1
     if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
-        portainerEnabled=$(grep -m1 '^ROLL_SERVICE_PORTAINER=' "${ROLL_HOME_DIR}/.env" | cut -d '=' -f2- | tr -d '\r')
-        startpageEnabled=$(grep -m1 '^ROLL_SERVICE_STARTPAGE=' "${ROLL_HOME_DIR}/.env" | cut -d '=' -f2- | tr -d '\r')
+        initConfigSchema
+        loadConfigFromFile "${ROLL_HOME_DIR}/.env"
     fi
-    portainerEnabled=${portainerEnabled:-0}
-    startpageEnabled=${startpageEnabled:-1}
+    # Read through the schema so the default (1) is authoritative, matching svc.cmd
+    portainerEnabled="$(getConfig ROLL_SERVICE_PORTAINER 1)"
+    startpageEnabled="$(getConfig ROLL_SERVICE_STARTPAGE 1)"
 
     services=(traefik dnsmasq mailhog tunnel)
     [[ "${portainerEnabled}" == 1 ]] && services+=(portainer)

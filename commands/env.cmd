@@ -17,7 +17,7 @@ trap '' ERR
 
 ## define source repository
 if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
-  eval "$(cat "${ROLL_HOME_DIR}/.env" | sed 's/\r$//g' | grep "^ROLL_")"
+  loadConfigFromFile "${ROLL_HOME_DIR}/.env"
 fi
 export ROLL_IMAGE_REPOSITORY="${ROLL_IMAGE_REPOSITORY:-"ghcr.io/epartment/roll"}"
 
@@ -144,7 +144,7 @@ if [[ "${ROLL_PARAMS[0]}" == "up" ]]; then
 #		# update images if needed
 #		roll env pull
     ## create environment network for attachments if it does not already exist
-    if [[ -z "$(docker network ls -f 'name=$(renderEnvNetworkName)' -q)" ]]; then
+    if [[ -z "$(docker network ls -f "name=^$(renderEnvNetworkName)$" -q)" ]]; then
 
         docker compose \
             --env-file "${ROLL_ENV_PATH}/.env.roll" --project-directory "${ROLL_ENV_PATH}" -p "${ROLL_ENV_NAME}" \
@@ -223,6 +223,7 @@ then
 fi
 
 ## set ssh-agent permissions for container user
-if ([[ "${ROLL_PARAMS[0]}" == "up" ]] || [[ "${ROLL_PARAMS[0]}" == "start" ]]) then
-    roll root chmod 777 /run/host-services/ssh-auth.sock
+if ([[ "${ROLL_PARAMS[0]}" == "up" ]] || [[ "${ROLL_PARAMS[0]}" == "start" ]]) && [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
+    roll root chown www-data /run/host-services/ssh-auth.sock
+    roll root chmod 600 /run/host-services/ssh-auth.sock
 fi

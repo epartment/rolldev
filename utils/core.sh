@@ -26,38 +26,9 @@ function fatal {
   exit 1
 }
 
-function boxinfo() {
-   local s=("$@") b w use_tput=0
-
-   # only enable colors if we have a tty and TERM is set (and not "dumb")
-   if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] && command -v tput >/dev/null 2>&1; then
-     use_tput=1
-   fi
-
-   for l in "${s[@]}"; do
-     ((w < ${#l})) && { b="$l"; w="${#l}"; }
-   done
-
-   ((use_tput)) && tput setaf 3
-   echo " -${b//?/-}-
- | ${b//?/ } |"
-
-   for l in "${s[@]}"; do
-     if ((use_tput)); then
-       printf '| %s%*s%s |\n' "$(tput setaf 7)" "-$w" "$l" "$(tput setaf 3)"
-     else
-       printf '| %*s |\n' "-$w" "$l"
-     fi
-   done
-
-   echo "| ${b//?/ } |
-  -${b//?/-}-"
-   ((use_tput)) && tput sgr 0
-
-   return 0
- }
-
-function boxsuccess() {
+## draw a box around the given lines, with the text rendered in the given tput setaf color
+function box() {
+  local color="$1"; shift
   local s=("$@") b w use_tput=0
 
   # only enable colors if we have a tty and TERM is set (and not "dumb")
@@ -75,7 +46,7 @@ function boxsuccess() {
 
   for l in "${s[@]}"; do
     if ((use_tput)); then
-      printf '| %s%*s%s |\n' "$(tput setaf 2)" "-$w" "$l" "$(tput setaf 3)"
+      printf '| %s%*s%s |\n' "$(tput setaf "$color")" "-$w" "$l" "$(tput setaf 3)"
     else
       printf '| %*s |\n' "-$w" "$l"
     fi
@@ -88,35 +59,16 @@ function boxsuccess() {
   return 0
 }
 
+function boxinfo() {
+  box 7 "$@"
+}
+
+function boxsuccess() {
+  box 2 "$@"
+}
+
 function boxerror() {
-  local s=("$@") b w use_tput=0
-
-  # only enable colors if we have a tty and TERM is set (and not "dumb")
-  if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] && command -v tput >/dev/null 2>&1; then
-    use_tput=1
-  fi
-
-  for l in "${s[@]}"; do
-    ((w < ${#l})) && { b="$l"; w="${#l}"; }
-  done
-
-  ((use_tput)) && tput setaf 3
-  echo " -${b//?/-}-
-| ${b//?/ } |"
-
-  for l in "${s[@]}"; do
-    if ((use_tput)); then
-      printf '| %s%*s%s |\n' "$(tput setaf 1)" "-$w" "$l" "$(tput setaf 3)"
-    else
-      printf '| %*s |\n' "-$w" "$l"
-    fi
-  done
-
-  echo "| ${b//?/ } |
- -${b//?/-}-"
-  ((use_tput)) && tput sgr 0
-
-  return 0
+  box 1 "$@"
 }
 
 function version {

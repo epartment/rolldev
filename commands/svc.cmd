@@ -13,7 +13,8 @@ fi
 trap '' ERR
 
 if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
-  eval "$(cat "${ROLL_HOME_DIR}/.env" | sed 's/\r$//g' | grep "^ROLL_")"
+  initConfigSchema
+  loadConfigFromFile "${ROLL_HOME_DIR}/.env"
 fi
 export ROLL_IMAGE_REPOSITORY="${ROLL_IMAGE_REPOSITORY:-"ghcr.io/epartment/roll"}"
 
@@ -23,22 +24,14 @@ DOCKER_COMPOSE_ARGS=()
 DOCKER_COMPOSE_ARGS+=("-f")
 DOCKER_COMPOSE_ARGS+=("${ROLL_DIR}/docker/docker-compose.yml")
 
-# Load optional service flags
-if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
-    # Portainer service
-    eval "$(grep "^ROLL_SERVICE_PORTAINER" "${ROLL_HOME_DIR}/.env")"
-
-     # Startpage service
-    eval "$(grep "^ROLL_SERVICE_STARTPAGE" "${ROLL_HOME_DIR}/.env")"
-fi
-
-ROLL_SERVICE_PORTAINER="${ROLL_SERVICE_PORTAINER:-0}"
+# Optional service flags, read through the schema so the default (1) is authoritative
+ROLL_SERVICE_PORTAINER="$(getConfig ROLL_SERVICE_PORTAINER 1)"
 if [[ "${ROLL_SERVICE_PORTAINER}" == 1 ]]; then
     DOCKER_COMPOSE_ARGS+=("-f")
     DOCKER_COMPOSE_ARGS+=("${ROLL_DIR}/docker/portainer-service.yml")
 fi
 
-ROLL_SERVICE_STARTPAGE="${ROLL_SERVICE_STARTPAGE:-1}"
+ROLL_SERVICE_STARTPAGE="$(getConfig ROLL_SERVICE_STARTPAGE 1)"
 if [[ "${ROLL_SERVICE_STARTPAGE}" == 1 ]]; then
     DOCKER_COMPOSE_ARGS+=("-f")
     DOCKER_COMPOSE_ARGS+=("${ROLL_DIR}/docker/startpage-service.yml")
@@ -52,11 +45,7 @@ if [[ "${ROLL_PARAMS[0]}" == "up" ]]; then
 		fi
 
     ## sign certificate used by global services (by default roll.test)
-    if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
-        eval "$(grep "^ROLL_SERVICE_DOMAIN" "${ROLL_HOME_DIR}/.env")"
-    fi
-
-    ROLL_SERVICE_DOMAIN="${ROLL_SERVICE_DOMAIN:-roll.test}"
+    ROLL_SERVICE_DOMAIN="$(getConfig ROLL_SERVICE_DOMAIN roll.test)"
     if [[ ! -f "${ROLL_SSL_DIR}/certs/${ROLL_SERVICE_DOMAIN}.crt.pem" ]]; then
         "${ROLL_DIR}/bin/roll" sign-certificate "${ROLL_SERVICE_DOMAIN}"
     fi
