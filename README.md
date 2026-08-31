@@ -85,7 +85,7 @@ cosmetic one. Anything touching these areas needs testing on both:
 | Network probe | `ping` (unreliable) | `ping` (unreliable) | `isOnline` probes `https://ghcr.io/v2/` with `curl -m 3` instead, avoiding platform flag differences and ICMP blockage |
 | SSH agent socket | fixed host path `/run/host-services/ssh-auth.sock` | `${SSH_AUTH_SOCK}` from the host, and a socat proxy unless UID is 1000 | `environments/includes/php-fpm.darwin.yml` vs `.linux.yml`, `utils/config.sh:445-447` |
 | `.test` DNS | automatic via `/etc/resolver/test` | manual — `roll install` only prints a warning | `commands/install.cmd:56-66` |
-| Root CA trust | `security add-trusted-cert` | Fedora/CentOS and Debian/Ubuntu paths only; other distros silently skipped | `commands/install.cmd:29-52`, finding **L10** |
+| Root CA trust | `security add-trusted-cert` | Fedora/CentOS and Debian/Ubuntu paths, with a warning naming the CA file on other distros | `commands/install.cmd:29-58` |
 | tunnel key permissions | untouched | `chown root:root` on `ssh_key.pub`, because bind mounts are native | `commands/install.cmd:82-84` |
 | Xdebug host | `host.docker.internal` | container gateway address, looked up at runtime | `commands/debug.cmd:13-21` |
 | `mapfile` | absent (bash 3.2) | present | `commands/status.cmd:20-28` shows the required fallback |
@@ -272,7 +272,7 @@ responsibility is still describable.
 | Component | Size | Stated responsibility | Verdict |
 |---|---|---|---|
 | `bin/roll` | 98 lines | Entry point, dispatch, argument parsing | **Coherent** |
-| `utils/core.sh` | 184 lines | Messaging helpers, array/version utilities, network peering | **Coherent** — the three box-drawing functions are near-identical triplets (finding **L4**) |
+| `utils/core.sh` | 184 lines | Messaging helpers, array/version utilities, network peering | **Coherent** — the three box-drawing functions are one-line wrappers around a shared `box` helper |
 | `utils/config.sh` | 606 lines | Config schema, loading, validation, post-processing | **Coherent**; sole owner of configuration defaults |
 | `utils/registry.sh` | 461 lines | Command discovery and priority resolution | **Oversized for what it delivers** — ~200 lines serve `roll registry`'s reporting subcommands; the metadata layer they report on is a stub (**M6**) |
 | `utils/env.sh` | 108 lines | Env path location, partial precedence, env-type validation | **Coherent** |
@@ -283,9 +283,9 @@ responsibility is still describable.
 | `commands/*.cmd` (wrappers) | 5–25 lines each | One `roll env exec` invocation | **Coherent** |
 | `commands/magento2/`, `commands/wordpress/` | 344 lines / 11 lines | Env-type-specific commands | **Coherent**; `commands/magento1/` and both `usage.help`-only directories contain no commands |
 | `environments/includes/` | 20 fragments | One service each | **Coherent** |
-| `environments/<type>/` | 11 types | Per-type overrides and seeds | **Shell** for `local` (`environments/local/local.base.yml` is a 0-byte file) and thin for `vuejs` (no `init.env`) — see **L5** |
+| `environments/<type>/` | 11 types | Per-type overrides and seeds | **Coherent** — each type has an `init.env` (or documents why it doesn't), and `local` is properly documented |
 | `docker/`, `config/` | 290 lines | Shared-services compose and Traefik/OpenSSL config | **Coherent** |
-| `docs/` | 3 666 lines / 31 pages | User documentation | **Coherent**, drifting from the code (**M5**, **L1**) |
+| `docs/` | 3 666 lines / 31 pages | User documentation | **Coherent**, drifting from the code (**M5**) |
 
 ### Real coupling map
 
@@ -296,7 +296,6 @@ part. These are the couplings that are not visible from it:
 |---|---|---|---|
 | `commands/backup.cmd` | `commands/restore.cmd`, `commands/restore-full.cmd` | Undocumented on-disk contract: the staging directory `<cwd>/.roll/backups`, the archive layout, and the metadata JSON. Each file re-derives the path independently (documented in a comment at `commands/backup.cmd:22-35`) | Changing the layout in one file silently breaks the others; `restore-full.cmd` never loads the env config at all, so it resolves paths differently |
 | `commands/status.cmd:6` | `docker/docker-compose.yml` | The shared network name is recovered by `grep -A3 'networks:' … \| tail -n1 \| sed`, i.e. by text-parsing YAML | Reordering keys in `docker-compose.yml` breaks `roll status`'s "is RollDev running" check |
-| `commands/describe.cmd:18`, `commands/vnc.cmd:12` | Compose container naming | Both reconstruct container names by string concatenation instead of asking `roll env ps -q` — and they disagree: `describe` uses v2 (`name-svc-1`), `vnc` uses v1 (`name_svc_1`) | `roll vnc` cannot find a container under the Compose v2 that `bin/roll:26` requires (**M8**) |
 | `environments/includes/redis.base.yml` | `environments/includes/dragonfly.base.yml` | Both define a service literally named `redis`; Dragonfly only swaps the image and volume | Correct as written — it is what lets `roll redis` work either way — but it forces the mutual-exclusion guard at `commands/env.cmd:12-14` |
 | `commands/env.cmd:116-120` | `commands/browsersync.cmd` | `env up` shells back out to `roll browsersync freeport` to pick host ports before assembling the compose args | A circular dependency between two commands, evaluated on every `up` with browsersync enabled |
 | `docs/index.md:7` | `README.md` | Sphinx `include` with `end-before: <!-- include_open_stop -->` | The marker was missing before this revision, so the docs home page inlined the entire README (**M5**) |
@@ -367,17 +366,6 @@ boundary problems below all cost maintenance time rather than correctness.
   independently after a failure. This is worth doing when the file is next substantially edited, not
   on its own.
 
-**LB2. `environments/local/` is an empty environment type** — `environments/local/local.base.yml`
-
-- *What:* A 0-byte file. It satisfies `assertValidEnvType` (`utils/env.sh:83`), so `local` appears in
-  `roll env-init`'s list of valid types, and `commands/env.cmd:51,112` special-case it to skip
-  `php-fpm` and the nginx/db/redis defaults. There is no `init.env`.
-- *Why it matters:* `roll env-init x local && roll env up` produces an environment with a network and
-  nothing else. Whether that is the intent is not recorded anywhere.
-- *Suggested fix:* If it is intended as "networking only, bring your own `.roll/roll-env.yml`", say so
-  in a comment in the file and in `docs/environments/types.md`. If not, remove the directory; the
-  type disappears from the list automatically.
-
 ## Environments
 
 `roll env-init <name> <type>` writes `.env.roll` with five base lines and appends
@@ -396,7 +384,7 @@ boundary problems below all cost maintenance time rather than correctness.
 | `wordpress` | yes | **no** | PHP 7.4, Composer 1, seeds `DB_*`; PHP image variant is `php-fpm-wordpress` |
 | `php` | yes | **no** | PHP 8.1, `ROLL_DB=0` |
 | `vuejs` | **no** | **no** | Routes `app.` to nginx and `watch.app.` to port 8080 on `php-fpm` |
-| `local` | **no** | **no** | Empty base fragment — see **LB2** |
+| `local` | **no** | **no** | Network-only environment; bring your own `.roll/roll-env.yml` |
 
 Without a Mutagen configuration, macOS falls back to the bind mount from
 `environments/includes/php-fpm.base.yml` (`.:/var/www/html:cached`), which works but is markedly
@@ -586,7 +574,7 @@ These are enforced by review rather than by tooling, except where noted.
 - **Adding a command:** create `commands/<name>.cmd` + `commands/<name>.help`; the registry picks it
   up with no central list to edit. If it must accept arbitrary pass-through flags, add it to
   `ROLL_CMD_ANYARGS` in `bin/roll:43`. Add it to `commands/usage.help` as well — that file is
-  maintained by hand and is currently out of date (finding **L1**).
+  maintained by hand for visibility.
 - **Adding a service:** add the fragment(s) under `environments/includes/` (plus per-type overrides),
   wire a `ROLL_<SERVICE>` toggle into the assembly block in `commands/env.cmd`, and register the
   variable and its default in `initConfigSchema` (`utils/config.sh:58`). Do not rely on a
@@ -615,21 +603,6 @@ None found.
 
 ### Medium
 
-**M3. The network-existence check in `env up` never matches, so a redundant compose pass runs every
-time** — `commands/env.cmd:206`
-
-- *What:* `docker network ls -f 'name=$(renderEnvNetworkName)' -q` is single-quoted, so the command
-  substitution is not performed and Docker filters on the literal string
-  `name=$(renderEnvNetworkName)`. **Verified:** such a filter matches nothing, so the `-z` test is
-  always true and the `docker compose … up --no-start` block at `commands/env.cmd:208-210` executes on
-  every `roll env up`, not only on first creation.
-- *Why it matters:* Every `env up` performs a full extra compose pass — resolving images, creating
-  containers with `--no-start` — before the real `up`. It is wasted wall-clock on every start and,
-  because `--no-start` creates containers, it can mask ordering problems that a genuine first-run
-  would expose.
-- *Suggested fix:* `docker network ls -f "name=^$(renderEnvNetworkName)$" -q`, with double quotes and
-  anchors so a longer environment name is not matched as a prefix.
-
 **M4. `restore.cmd` and `restore-full.cmd` are near-identical copies** — see boundary finding
 [**MB1**](#boundary-findings) for the measurement and the suggested split.
 
@@ -649,140 +622,7 @@ time** — `commands/env.cmd:206`
 **M6. `roll registry`'s metadata layer is a stub** — see boundary finding
 [**MB2**](#boundary-findings).
 
-**M7. Nothing validates `ROLL_ENV_NAME`, and Compose rejects uppercase project names** —
-`commands/env-init.cmd:21-23`, `utils/config.sh:65`
-
-- *What:* `env-init` prompts for a name and accepts anything non-empty; the schema declares
-  `ROLL_ENV_NAME` as `string:required`, which only checks for emptiness. The name is passed straight
-  to `docker compose -p` (`commands/env.cmd:248`). **Verified:** `docker compose -p TestUpper …`
-  fails with `invalid project name "TestUpper": must consist only of lowercase alphanumeric
-  characters, hyphens, and underscores as well as start with a letter or number`.
-- *Why it matters:* `roll env-init MyProject magento2` succeeds, and then every subsequent `roll env`
-  command fails with a Docker error that names neither RollDev nor `.env.roll`. Related: several
-  places lowercase the name (`renderEnvNetworkName`, `utils/env.sh:50`) while others do not
-  (`commands/describe.cmd:18`, the `traefik.docker.network=${ROLL_ENV_NAME}_default` labels in every
-  fragment), so even a name that Compose tolerates can produce a label that does not match the real
-  network.
-- *Suggested fix:* Validate in `commands/env-init.cmd` before writing the file — reject anything not
-  matching `^[a-z0-9][a-z0-9_-]*$` and re-prompt — and add the same check to
-  `validateConfigValue` for `ROLL_ENV_NAME` so existing files are caught by `roll config validate`.
-
-**M8. `roll vnc` builds Compose v1 container names** — `commands/vnc.cmd:12`
-
-- *What:* It constructs `${ROLL_ENV_NAME}_${service}_${index}` — the Compose v1 separator — while
-  `bin/roll:26-30` requires Compose v2, which names containers `name-service-1`.
-  `commands/describe.cmd:18` uses the v2 form, so the two disagree.
-- *Why it matters:* The SSH forward and the generated Remmina profile both target a hostname that does
-  not resolve, so `roll vnc` cannot reach the Selenium VNC server on any supported Compose version.
-- *Suggested fix:* Resolve the container through Compose instead of reconstructing the name:
-  `roll env ps -q "${service}"`, then `docker container inspect` for the hostname. That also removes
-  the assumption of a single replica. Apply the same change to `commands/describe.cmd:18`.
-
 ### Low
-
-**L1. `commands/usage.help` is out of date** — `commands/usage.help:44-77`
-
-- *What:* The hand-maintained command list omits nine commands that the registry resolves from this
-  repository: `cliq`, `describe`, `duplicate`, `magerun`, `multistore`, `node`, `npm`, `vnc`, and the
-  internal `usage`. (`roll registry export simple` also lists commands supplied by third-party packs
-  under `~/.roll/reclu`, which correctly do not appear here.)
-- *Why it matters:* `roll` with no arguments is the primary discovery path, so undocumented commands
-  are effectively invisible — including `roll env describe`, which is the most useful of them.
-- *Suggested fix:* Add the missing entries. Longer term this is what **MB2** would remove the need
-  for: a working registry description mechanism would let `usage.cmd` render the list from the
-  `.help` files instead.
-
-**L2. Global configuration is loaded by `eval`, bypassing the schema** — `commands/env.cmd:20`,
-`commands/svc.cmd:16,29,32,56`, `commands/shell.cmd:5`, `commands/rootshell.cmd:5`
-
-- *What:* Six places read `~/.roll/.env` with `eval "$(cat … | grep '^ROLL_')"` or a narrower grep,
-  rather than going through `loadConfigFromFile` (`utils/config.sh:235`), which parses `KEY=VALUE`
-  with a regex and validates against the schema.
-- *Why it matters:* Any shell metacharacter in that file executes — a value containing `$(…)` or a
-  backtick runs as a command. The file is user-owned so this is not a privilege boundary, but it turns
-  a typo into arbitrary execution and it silently skips the validation everything else relies on. It
-  also means the same file is parsed two different ways depending on which command runs.
-- *Suggested fix:* Call `loadConfigFromFile "${ROLL_HOME_DIR}/.env"` in all six places. It already
-  handles CRLF stripping and quote removal, which is what the `sed`/`grep` pipelines were
-  approximating.
-
-**L3. `ROLL_SERVICE_PORTAINER` has three different defaults** — `utils/config.sh:151`,
-`commands/svc.cmd:35`, `commands/install.cmd:96,113`, `commands/status.cmd:79-84`
-
-- *What:* The schema says `boolean:1`; `commands/svc.cmd:35` falls back to `0`;
-  `commands/install.cmd` writes `ROLL_SERVICE_PORTAINER=1` into a fresh `~/.roll/.env` while the
-  comment above the second occurrence (`commands/install.cmd:112`) reads
-  `Set to "0" to disable global Portainer service`; `commands/status.cmd` falls back to `0` again.
-- *Why it matters:* Whether Portainer starts depends on which code path ran, and `roll status` can
-  report it as disabled while `roll svc` started it. The stray comment makes the file look as though
-  it writes `0`.
-- *Suggested fix:* Read the value through `getConfig ROLL_SERVICE_PORTAINER` in both `svc.cmd` and
-  `status.cmd` so the schema is the only default, and fix the comment.
-
-**L4. The three box-drawing helpers are copies** — `utils/core.sh:29-120`
-
-- *What:* `boxinfo`, `boxsuccess` and `boxerror` are 30-line functions differing only in the
-  `tput setaf` colour code (3, 2, 1) and one leading space in the border.
-- *Why it matters:* Ninety lines where thirty-two would do, and a change to the box format has to be
-  made three times.
-- *Suggested fix:* One `box <colour> <lines…>` function with the three names as one-line wrappers.
-
-**L5. `vuejs` has no `init.env`, so it inherits stale schema defaults** —
-`environments/vuejs/`
-
-- *What:* Every other populated environment type ships an `init.env` that `commands/env-init.cmd:48`
-  appends. `vuejs` does not, so a new project gets only the five base lines and falls back to the
-  schema — PHP 8.1, Node 18, MariaDB 10.4 — for a type whose whole purpose is a Node toolchain.
-- *Why it matters:* A Vue project is created with an eight-version-old Node by default, and the fact
-  that it is a default rather than a choice is invisible.
-- *Suggested fix:* Add `environments/vuejs/init.env` pinning at least `NODE_VERSION`, `PHP_VERSION`
-  and `ROLL_DB`. See **LB2** for the related question about `environments/local/`.
-
-**L6. Traefik mounts the Docker socket read-write** — `docker/docker-compose.yml:12`
-
-- *What:* `- /var/run/docker.sock:/var/run/docker.sock`, with no `:ro`. Traefik's Docker provider only
-  reads.
-- *Why it matters:* Write access to the Docker socket is equivalent to root on the host. This is a
-  local development tool, so the exposure is bounded by the host itself, but the write access buys
-  nothing.
-- *Suggested fix:* Append `:ro`.
-
-**L7. `env up` chmods the SSH agent socket to 777 unconditionally** — `commands/env.cmd:285-287`
-
-- *What:* Every `up` and `start` runs `roll root chmod 777 /run/host-services/ssh-auth.sock` in the
-  `php-fpm` container, with no check that the path exists or that agent forwarding is in use. On Linux
-  the mount source is `${SSH_AUTH_SOCK:-/dev/null}` (`environments/includes/php-fpm.linux.yml:3`), so
-  without an agent this chmods `/dev/null`'s bind target.
-- *Why it matters:* It makes the forwarded agent socket writable by every process in the container,
-  and the unconditional run means a failure here is noise rather than signal. Anything running in the
-  container can then use the host's SSH keys, which is the intent for the developer but also true for
-  anything that ends up inside a `composer install`.
-- *Suggested fix:* Guard on `[[ -n "${SSH_AUTH_SOCK:-}" ]]` and use the narrowest mode that works —
-  `chown www-data` plus `chmod 600`, since only that user needs it.
-
-**L8. Sphinx is configured for directories that do not exist** — `docs/conf.py:43,45`
-
-- *What:* `html_static_path = ['_static']` and `html_extra_path = ['_redirects']`; neither
-  `docs/_static` nor `docs/_redirects` exists in the repository.
-- *Why it matters:* Every documentation build emits warnings for both. Harmless, but it means a build
-  log is never clean, so a real warning is easy to miss.
-- *Suggested fix:* Remove both settings, or add the directories with a `.gitkeep`.
-
-**L10. Root CA trust is skipped without warning on Linux distributions that are neither Debian- nor
-Fedora-family** — `commands/install.cmd:29-52`
-
-- *What:* The trust step is an `if`/`elif`/`elif` chain testing for
-  `/etc/pki/ca-trust/source/anchors` (Fedora/CentOS), `/usr/local/share/ca-certificates`
-  (Debian/Ubuntu), then `darwin`. If a Linux host has neither directory — Arch, openSUSE, Alpine,
-  Void — no branch runs and nothing is printed. Contrast the DNS step immediately below, which does
-  emit a `warning` for every non-macOS host (`commands/install.cmd:65`).
-- *Why it matters:* `roll install` reports success, and the first symptom is every `.test` site
-  showing a certificate error with no indication that a step was skipped rather than failed. The CA
-  file is generated correctly, so the user has no reason to suspect the trust step.
-- *Suggested fix:* Add a final `elif [[ "$OSTYPE" =~ ^linux ]]` branch that warns and prints the CA
-  path (`${ROLL_SSL_DIR}/rootca/certs/ca.cert.pem`) with a pointer to the documentation, mirroring
-  the DNS warning. Detecting `update-ca-trust`/`update-ca-certificates` on `PATH` instead of probing
-  directories would also widen distribution coverage.
 
 ## Audited and clean
 
@@ -841,11 +681,10 @@ line-audited, and neither backup nor restore was executed against a live environ
 | `Unsupported OSTYPE '…'` | Only macOS and Linux (including WSL2) are supported hosts | See [Supported platforms](#supported-platforms); on Windows run `roll` inside WSL2, never in PowerShell or Git Bash |
 | `Environment config could not be found` | No `.env.roll` in the current directory or any parent | Run `roll env-init <name> <type>` from the project root |
 | `docker compose version should be 2.2.3 or higher` | Compose v1, or the plugin is missing | Install the Compose v2 plugin; `docker-compose` (hyphenated) is not used |
-| `invalid project name "…"` from `roll env up` | `ROLL_ENV_NAME` contains uppercase or an illegal character | Lowercase it in `.env.roll`; note the rename orphans the old volumes (finding **M7**) |
+| `invalid project name "…"` from `roll env up` | `ROLL_ENV_NAME` contains uppercase or an illegal character | Lowercase it in `.env.roll`; note the rename orphans the old volumes |
 | Environment comes up on an empty database after a rename | `ROLL_ENV_NAME` is the Compose project name and prefixes every named volume | Bring the environment down, copy `oldname_dbdata` to `newname_dbdata`, bring it up |
 | `port is already allocated` on `php-fpm` | `ROLL_BROWSERSYNC=1` publishes fixed host ports on that service — the only fragment that publishes any | Set `ROLL_BROWSERSYNC=0`; verify with `roll env config \| grep published`. See `FEATURE-REQUESTS.md` H2 |
 | A command run right after `roll env up` fails to connect to the DB or search engine | No fragment declares a `healthcheck:` and `up` does not pass `--wait`, so it returns when containers *start* | Retry with a wait loop against the service. See `FEATURE-REQUESTS.md` H1 |
-| `.test` sites show a certificate error on Linux after a clean `roll install` | CA trust is only wired up for Debian- and Fedora-family distributions, and is skipped silently otherwise | Finding **L10**; add `~/.roll/ssl/rootca/certs/ca.cert.pem` to the distribution's trust store manually |
 | `Mutagen sync sessions are not used on "linux" host environments` | `roll sync` is macOS-only | Expected; Linux and WSL bind-mount directly |
 | `Mutagen configuration does not exist for environment type "…"` | Only `magento1`, `magento2` and `shopware` ship a `.mutagen.yml` | Expected; that type uses a bind mount on macOS too |
 | In-container `composer install` reports a missing `.git` in a `vendor/` package | Mutagen's `ignore.vcs: true` strips `.git` at every depth, so source installs have no checkout | Remove the affected `vendor/` directories and re-run `composer install` to force dist installs |
