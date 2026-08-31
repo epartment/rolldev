@@ -119,3 +119,7 @@ ROLL_SERVICE_PORTAINER=1
 EOT
   fi
 fi
+## gum backs every interactive prompt. This is a warning rather than a hard requirement: installing
+## roll on a machine that only ever drives it with flags must not be blocked by a missing gum, and
+## the prompts themselves check for it when they are actually reached.
+checkGum

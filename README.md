@@ -91,8 +91,14 @@ cosmetic one. Anything touching these areas needs testing on both:
 | `mapfile` | absent (bash 3.2) | present | `commands/status.cmd:20-28` shows the required fallback |
 | CI coverage | `macos-latest`: ShellCheck + Docker-free smoke | `ubuntu-latest`: ShellCheck + Docker-free smoke | `.github/workflows/shellcheck.yml` matrix |
 
-Prerequisites: Docker (Desktop on macOS/Windows, Engine on Linux) with `docker compose` ≥ 2.2.3, and
-Homebrew. On macOS, Mutagen is installed automatically on first `roll sync` if missing.
+Prerequisites: Docker (Desktop on macOS/Windows, Engine on Linux) with `docker compose` ≥ 2.2.3,
+Homebrew, and [gum](https://github.com/charmbracelet/gum) ≥ 0.14.0, which backs every interactive
+prompt. The Homebrew formula declares gum as a dependency, so a `brew install` pulls it in; on a
+source checkout install it yourself (`brew install gum`, Charm's apt repository, `dnf`/`pacman`, or
+a release binary — `roll install` prints the list and warns rather than failing). gum is needed
+only for prompts: every one of them is also reachable by flag, environment variable or positional
+argument, so scripted and CI use works without it. On macOS, Mutagen is installed automatically on
+first `roll sync` if missing.
 
 Install and start the shared services:
 

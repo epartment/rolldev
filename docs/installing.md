@@ -6,6 +6,20 @@
 * [Docker Desktop for Mac](https://hub.docker.com/editions/community/docker-ce-desktop-mac) 2.2.0.0 or later or [Docker for Linux](https://docs.docker.com/install/) or [Docker for Windows](https://docs.docker.com/desktop/windows/install/)
 * `docker-compose` version 2.0 or later is required (this can be installed via `brew`, `apt`, `dnf`, or `pip3` as needed)
 * [Mutagen](https://mutagen.io/) 0.11.4 or later is required for environments leveraging sync sessions on Mac OS. RollDev will attempt to install this via `brew` if not present.
+* [gum](https://github.com/charmbracelet/gum) 0.14.0 or later backs every interactive prompt (`roll env-init`, and the password prompts in `backup`, `restore` and `duplicate`). The Homebrew formula installs it for you. Installing it by hand:
+
+  | Platform | Command |
+  |---|---|
+  | macOS | `brew install gum` |
+  | Debian/Ubuntu | Charm's apt repository — see [gum's install instructions](https://github.com/charmbracelet/gum#installation) |
+  | Fedora/RHEL | `sudo dnf install gum` |
+  | Arch | `sudo pacman -S gum` |
+  | Anywhere | download a binary from [the releases page](https://github.com/charmbracelet/gum/releases) — no root required |
+
+  gum is only needed for prompts. Every prompt can also be answered by a flag, an environment
+  variable or a positional argument, so scripted and CI use works without it — see
+  [Service version pins](configuration/version-pins.md) and each command's `--help` for the
+  non-interactive form. `roll install` warns if gum is missing rather than failing.
 
 :::{warning}
 **By default Docker Desktop for Mac allocates 2GB memory.**

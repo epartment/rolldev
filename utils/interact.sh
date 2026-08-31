@@ -22,28 +22,64 @@ function isInteractive() {
     [[ -t 0 && -t 1 ]]
 }
 
+## Per-platform install instructions, shared by the lazy assertGum below and by `roll install`.
+function gumInstallHint() {
+    >&2 echo ""
+    >&2 echo "    macOS:          brew install gum"
+    >&2 echo "    Debian/Ubuntu:  sudo mkdir -p /etc/apt/keyrings \\"
+    >&2 echo "                      && curl -fsSL https://repo.charm.sh/apt/gpg.key \\"
+    >&2 echo "                         | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg \\"
+    >&2 echo "                      && echo 'deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *' \\"
+    >&2 echo "                         | sudo tee /etc/apt/sources.list.d/charm.list \\"
+    >&2 echo "                      && sudo apt update && sudo apt install gum"
+    >&2 echo "    Fedora/RHEL:    sudo dnf install gum"
+    >&2 echo "    Arch:           sudo pacman -S gum"
+    >&2 echo "    Anywhere:       download a binary from https://github.com/charmbracelet/gum/releases"
+    >&2 echo ""
+}
+
+## The installed gum version, empty when gum is absent or does not report one.
+function gumVersion() {
+    local installed=""
+    command -v gum >/dev/null 2>&1 || return 0
+    installed="$(gum --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)" || true
+    echo "${installed}"
+}
+
+## Non-fatal check for `roll install`: report gum's state and move on. Installing roll on a machine
+## that never runs an interactive prompt must not be blocked by a missing gum.
+function checkGum() {
+    local installed=""
+    installed="$(gumVersion)"
+
+    if [[ -z "${installed}" ]]; then
+        warning "gum is not installed. Interactive prompts (env-init, backup, restore) will not work"
+        warning "until it is; non-interactive use with flags is unaffected."
+        gumInstallHint
+        return 0
+    fi
+
+    if ! test "$(version "${installed}")" -ge "$(version "${ROLL_GUM_REQUIRE}")"; then
+        warning "gum ${installed} is older than the required ${ROLL_GUM_REQUIRE}; please upgrade it."
+        gumInstallHint
+        return 0
+    fi
+
+    success "gum ${installed} found."
+    return 0
+}
+
 ## Called lazily by the wrappers below, never at startup: a non-interactive invocation of a command
 ## that happens not to prompt must keep working on a machine with no gum installed.
 function assertGum() {
     if ! command -v gum >/dev/null 2>&1; then
         error "This prompt needs \`gum\`, which is not installed."
-        >&2 echo ""
-        >&2 echo "    macOS:          brew install gum"
-        >&2 echo "    Debian/Ubuntu:  sudo mkdir -p /etc/apt/keyrings \\"
-        >&2 echo "                      && curl -fsSL https://repo.charm.sh/apt/gpg.key \\"
-        >&2 echo "                         | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg \\"
-        >&2 echo "                      && echo 'deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *' \\"
-        >&2 echo "                         | sudo tee /etc/apt/sources.list.d/charm.list \\"
-        >&2 echo "                      && sudo apt update && sudo apt install gum"
-        >&2 echo "    Fedora/RHEL:    sudo dnf install gum"
-        >&2 echo "    Arch:           sudo pacman -S gum"
-        >&2 echo "    Anywhere:       download a binary from https://github.com/charmbracelet/gum/releases"
-        >&2 echo ""
+        gumInstallHint
         fatal "Install gum and try again, or supply the value non-interactively."
     fi
 
     local installed=""
-    installed="$(gum --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)" || true
+    installed="$(gumVersion)"
 
     if [[ -z "${installed}" ]]; then
         warning "Could not determine the installed gum version; continuing."
