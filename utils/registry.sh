@@ -270,7 +270,7 @@ function listCommandsByCategory() {
         
         # Display all categories
         for category in "${categories[@]}"; do
-            echo -e "\033[33m${category^} Commands:\033[0m"
+            echo -e "\033[33m$(capitalize "$category") Commands:\033[0m"
             listCommandsByCategory "$category"
             echo ""
         done
@@ -360,7 +360,7 @@ function showRegistryStats() {
     # Display category counts
     i=0
     while [[ $i -lt ${#categories[@]} ]]; do
-        printf "  %-15s: %d commands\n" "${categories[$i]^}" "${category_counts[$i]}"
+        printf "  %-15s: %d commands\n" "$(capitalize "${categories[$i]}")" "${category_counts[$i]}"
         i=$((i + 1))
     done
 }

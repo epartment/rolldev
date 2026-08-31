@@ -29,11 +29,11 @@ case "${ROLL_PARAMS[0]}" in
     categories)
         # List commands organized by category
         category="${ROLL_PARAMS[1]:-}"
-        
+
         initializeRegistry
-        
+
         if [[ -n "$category" ]]; then
-            echo -e "\033[33m${category^} Commands:\033[0m"
+            echo -e "\033[33m$(capitalize "$category") Commands:\033[0m"
             listCommandsByCategory "$category"
         else
             listCommandsByCategory

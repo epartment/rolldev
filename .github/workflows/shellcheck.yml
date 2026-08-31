@@ -2,13 +2,17 @@ name: ShellCheck
 on:
   push:
     paths:
-      - 'commands/*.cmd'
+      - 'commands/**/*.cmd'
+      - 'commands/**/*.help'
       - 'utils/*.sh'
+      - '.shellcheckrc'
       - '.github/workflows/shellcheck.yml'
   pull_request:
     paths:
-      - 'commands/*.cmd'
+      - 'commands/**/*.cmd'
+      - 'commands/**/*.help'
       - 'utils/*.sh'
+      - '.shellcheckrc'
       - '.github/workflows/shellcheck.yml'
   workflow_dispatch:
 
@@ -21,4 +25,4 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Run shellcheck
-        run: shellcheck commands/*.cmd utils/*.sh
+        run: shellcheck commands/*.cmd commands/*/*.cmd commands/*.help commands/*/*.help utils/*.sh

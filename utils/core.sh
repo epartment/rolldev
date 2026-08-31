@@ -23,7 +23,7 @@ function error {
 
 function fatal {
   error "$@"
-  exit -1
+  exit 1
 }
 
 function boxinfo() {
@@ -123,6 +123,12 @@ function version {
   echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }';
 }
 
+## capitalize the first letter of a string; bash 3.2 compatible
+function capitalize() {
+  local s="$1"
+  printf '%s%s' "$(printf '%s' "${s:0:1}" | tr '[:lower:]' '[:upper:]')" "${s:1}"
+}
+
 ## determines if value is present in an array; returns 0 if element is present
 ## in array, otherwise returns 1
 ##
@@ -144,14 +150,14 @@ function assertDockerRunning {
 
 ## methods to peer global services requiring network connectivity with project networks
 function connectPeeredServices {
-  for svc in ${DOCKER_PEERED_SERVICES[@]}; do
+  for svc in "${DOCKER_PEERED_SERVICES[@]}"; do
     echo "Connecting ${svc} to $1 network"
     (docker network connect "$1" ${svc} 2>&1| grep -v 'already exists in network') || true
   done
 }
 
 function disconnectPeeredServices {
-  for svc in ${DOCKER_PEERED_SERVICES[@]}; do
+  for svc in "${DOCKER_PEERED_SERVICES[@]}"; do
     echo "Disconnecting ${svc} from $1 network"
     (docker network disconnect "$1" ${svc} 2>&1| grep -v 'is not connected') || true
   done

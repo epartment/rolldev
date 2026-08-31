@@ -183,7 +183,7 @@ function logMessage() {
         SUCCESS) success "$@" ;;
         WARNING) warning "$@" ;;
         ERROR) error "$@" ;;
-        VERBOSE) [[ $RESTORE_VERBOSE -eq 1 ]] && info "[VERBOSE] $@" ;;
+        VERBOSE) [[ $RESTORE_VERBOSE -eq 1 ]] && info "[VERBOSE] $*" ;;
     esac
 }
 
