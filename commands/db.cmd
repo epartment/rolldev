@@ -10,7 +10,10 @@ if [[ ${ROLL_DB:-1} -eq 0 ]]; then
 fi
 
 if (( ${#ROLL_PARAMS[@]} == 0 )) || [[ "${ROLL_PARAMS[0]}" == "help" ]]; then
-  roll db --help || exit $? && exit $?
+  ## Do NOT re-invoke `roll db --help` here. `db` is on roll's ROLL_CMD_ANYARGS list, so roll's
+  ## own parser stops at --help and passes it through to this script with ROLL_PARAMS empty -
+  ## re-invoking roll lands right back on this branch and forks until killed.
+  source "${ROLL_DIR}/commands/usage.cmd"
 fi
 
 ## load connection information for the mysql service

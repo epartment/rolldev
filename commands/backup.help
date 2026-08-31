@@ -43,12 +43,12 @@ ROLL_USAGE=$(cat <<EOF
                         Created if missing and checked for writability before the backup
                         starts. Volumes are still staged in .roll/backups/ and retention
                         cleanup never touches PATH, so a shared drop directory holding
-                        other environments' archives is safe.
+                        archives of other environments is safe.
   --archive-name=NAME   Basename for the finished archive; the compression extension is
-                        appended (default: backup_<env-name>_<backup-id>). The 'latest'
+                        appended (default: backup_<env-name>_<backup-id>). The "latest"
                         symlink is only maintained when the archive stays in .roll/backups/.
   --keep-dir            Keep the uncompressed backup directory in .roll/backups/ as well as
-                        the archive (removed by default). 'roll restore' reads the directory
+                        the archive (removed by default). "roll restore" reads the directory
                         form, so this is what leaves a restorable backup in the project.
 
 \033[33mDuplication Options:\033[0m
@@ -74,7 +74,7 @@ ROLL_USAGE=$(cat <<EOF
   • Backups are stored in .roll/backups/ directory unless --output-dir is given
   • Service detection is automatic based on environment configuration
   • All backups include metadata for restoration tracking
-  • Use 'roll restore' command to restore from backups
+  • Use "roll restore" command to restore from backups
   • Encrypted backups require GPG for decryption during restore
   • Use --encrypt without password to avoid storing passwords in command history
   • Source code backup excludes common cache/vendor directories

@@ -6,7 +6,10 @@ loadEnvConfig "${ROLL_ENV_PATH}" || exit $?
 assertDockerRunning
 
 if (( ${#ROLL_PARAMS[@]} == 0 )) || [[ "${ROLL_PARAMS[0]}" == "help" ]]; then
-  roll env --help || exit $? && exit $?
+  ## Do NOT re-invoke `roll env --help` here. `env` is on roll's ROLL_CMD_ANYARGS list, so roll's
+  ## own parser stops at --help and passes it through to this script with ROLL_PARAMS empty -
+  ## re-invoking roll lands right back on this branch and forks until killed.
+  source "${ROLL_DIR}/commands/usage.cmd"
 fi
 
 if [[ ${ROLL_REDIS} -eq 1 && ${ROLL_DRAGONFLY} -eq 1 ]]; then

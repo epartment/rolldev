@@ -6,7 +6,10 @@ assertRollDevInstall
 assertDockerRunning
 
 if (( ${#ROLL_PARAMS[@]} == 0 )) || [[ "${ROLL_PARAMS[0]}" == "help" ]]; then
-  roll svc --help || exit $? && exit $?
+  ## Do NOT re-invoke `roll svc --help` here. `svc` is on roll's ROLL_CMD_ANYARGS list, so roll's
+  ## own parser stops at --help and passes it through to this script with ROLL_PARAMS empty -
+  ## re-invoking roll lands right back on this branch and forks until killed.
+  source "${ROLL_DIR}/commands/usage.cmd"
 fi
 
 ## allow return codes from sub-process to bubble up normally
