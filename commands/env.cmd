@@ -21,88 +21,9 @@ if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
 fi
 export ROLL_IMAGE_REPOSITORY="${ROLL_IMAGE_REPOSITORY:-"ghcr.io/epartment/roll"}"
 
-## configure environment type defaults
-if [[ ${ROLL_ENV_TYPE} =~ ^magento || ${ROLL_ENV_TYPE} =~ ^wordpress ]]; then
-    export ROLL_SVC_PHP_VARIANT=-${ROLL_ENV_TYPE}
-fi
-
-if [[ ${NODE_VERSION} -ne 0 ]]; then
-    export ROLL_SVC_PHP_NODE=-node${NODE_VERSION}
-fi
-
-if [[ -z ${DB_DISTRIBUTION} ]]; then
-    export DB_DISTRIBUTION="mariadb"
-fi
-
-if [[ -z ${DB_DISTRIBUTION_VERSION} ]]; then
-    if [[ ${DB_DISTRIBUTION} == "mysql" ]]; then
-        export DB_DISTRIBUTION_VERSION=${MYSQL_VERSION:-8.0}
-    else
-        export DB_DISTRIBUTION_VERSION=${MARIADB_VERSION:-10.4}
-    fi
-fi
-
-## configure xdebug version
-export XDEBUG_VERSION="debug" # xdebug2 image
-if [[ ${PHP_XDEBUG_3} -eq 1 ]]; then
-    export XDEBUG_VERSION="xdebug3"
-fi
-
-if [[ ${ROLL_ENV_TYPE} != local ]]; then
-    ROLL_NGINX=${ROLL_NGINX:-1}
-    ROLL_DB=${ROLL_DB:-1}
-    ROLL_REDIS=${ROLL_REDIS:-1}
-
-    # define bash history folder for changing permissions
-    ROLL_CHOWN_DIR_LIST="/bash_history /home/www-data/.ssh ${ROLL_CHOWN_DIR_LIST:-}"
-fi
-export CHOWN_DIR_LIST=${ROLL_CHOWN_DIR_LIST:-}
-
-if [[ ${ROLL_ENV_TYPE} == "magento1" ]]; then
-	if [[ -f "${ROLL_ENV_PATH}/.modman/.basedir" ]]; then
-  	export NGINX_PUBLIC='/'$(cat "${ROLL_ENV_PATH}/.modman/.basedir")
-  fi
-
-  if [[ ${ROLL_MAGENTO_STATIC_CACHING} -eq 1 ]]; then
-    export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento1.conf}
-  fi
-  export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento1-dev.conf}
-fi
-export NGINX_PUBLIC=${NGINX_PUBLIC:-}
-
-if [[ ${ROLL_ENV_TYPE} == "magento2" ]]; then
-    ROLL_VARNISH=${ROLL_VARNISH:-1}
-    ROLL_ELASTICSEARCH=${ROLL_ELASTICSEARCH:-1}
-    ROLL_RABBITMQ=${ROLL_RABBITMQ:-1}
-    ROLL_ADMIN_AUTOLOGIN=${ROLL_ADMIN_AUTOLOGIN:-0}
-
-    if [[ ${ROLL_MAGENTO_STATIC_CACHING} -eq 1 ]]; then
-      if [[ ${ROLL_ADMIN_AUTOLOGIN} -eq 1 ]]; then
-        export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2-autologin.conf}
-      else
-        export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2.conf}
-      fi
-    fi
-
-    if [[ ${ROLL_ADMIN_AUTOLOGIN} -eq 1 ]]; then
-        export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2-dev-autologin.conf}
-    else
-        export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2-dev.conf}
-    fi
-
-    export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2-dev.conf}
-fi
-export NGINX_TEMPLATE=${NGINX_TEMPLATE:-}
-
-## WSL1/WSL2 are GNU/Linux env type but still run Docker Desktop
-if [[ ${XDEBUG_CONNECT_BACK_HOST} == '' ]] && grep -sqi microsoft /proc/sys/kernel/osrelease; then
-    export XDEBUG_CONNECT_BACK_HOST=host.docker.internal
-fi
-
-## For linux, if UID is 1000, there is no need to use the socat proxy.
-if [[ ${ROLL_ENV_SUBT} == "linux" && $UID == 1000 ]]; then
-    export SSH_AUTH_SOCK_PATH_ENV=/run/host-services/ssh-auth.sock
-fi
+## Environment-type defaults, derived variables and OS-specific paths all come from
+## loadEnvConfig above (utils/config.sh). They used to be recomputed here as well, which is why
+## the config loader's own derivations could stay broken unnoticed for so long.
 
 ## configure docker-compose files
 DOCKER_COMPOSE_ARGS=()

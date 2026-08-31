@@ -105,7 +105,7 @@ echo ""
 line_top
 printf "${CYAN}│${NC} ${BOLD}Project:${NC} %-83s ${CYAN}│${NC}\n" "${ROLL_ENV_NAME} ${ROLL_ENV_PATH}"
 printf "${CYAN}│${NC} ${BOLD}Domain:${NC}  %-83s ${CYAN}│${NC}\n" "https://${TRAEFIK_SUBDOMAIN:-app}.${TRAEFIK_DOMAIN}"
-printf "${CYAN}│${NC} ${BOLD}Type:${NC}    %-83s ${CYAN}│${NC}\n" "${ROLL_ENV_TYPE} PHP ${PHP_VERSION:-8.2} | Node ${NODE_VERSION:-18}"
+printf "${CYAN}│${NC} ${BOLD}Type:${NC}    %-83s ${CYAN}│${NC}\n" "${ROLL_ENV_TYPE} PHP ${PHP_VERSION} | Node ${NODE_VERSION}"
 printf "${CYAN}│${NC} ${BOLD}Router:${NC}  %-83s ${CYAN}│${NC}\n" "traefik"
 line_mid
 
@@ -117,20 +117,20 @@ line_mid
 data_row "nginx" "$(get_status_text nginx)" "https://${TRAEFIK_SUBDOMAIN:-app}.${TRAEFIK_DOMAIN}" "${ROLL_ENV_TYPE}"
 sub_row "InDocker: nginx:80,443" "Server: nginx-fpm"
 
-data_row "php-fpm" "$(get_status_text php-fpm)" "InDocker: php-fpm:9000" "PHP ${PHP_VERSION:-8.2}"
+data_row "php-fpm" "$(get_status_text php-fpm)" "InDocker: php-fpm:9000" "PHP ${PHP_VERSION}"
 
 if [[ "${ROLL_XDEBUG:-0}" == "1" ]] || [[ "${PHP_XDEBUG_3:-0}" == "1" ]]; then
     data_row "php-debug" "$(get_status_text php-debug)" "InDocker: php-debug:9000" "Xdebug 3"
 fi
 
 if [[ "${ROLL_DB:-1}" == "1" ]]; then
-    DB_TYPE="${DB_DISTRIBUTION:-mariadb}:${DB_DISTRIBUTION_VERSION:-10.4}"
+    DB_TYPE="${DB_DISTRIBUTION:-mariadb}:${DB_DISTRIBUTION_VERSION}"
     data_row "db" "$(get_status_text db)" "InDocker: db:3306" "${DB_TYPE}"
     sub_row "" "magento/magento"
 fi
 
 if [[ "${ROLL_REDIS:-0}" == "1" ]]; then
-    data_row "redis" "$(get_status_text redis)" "InDocker: redis:6379" "Redis ${REDIS_VERSION:-7.2}"
+    data_row "redis" "$(get_status_text redis)" "InDocker: redis:6379" "Redis ${REDIS_VERSION}"
 fi
 
 if [[ "${ROLL_REDISINSIGHT:-0}" == "1" ]]; then
@@ -138,11 +138,11 @@ if [[ "${ROLL_REDISINSIGHT:-0}" == "1" ]]; then
 fi
 
 if [[ "${ROLL_ELASTICSEARCH:-0}" == "1" ]]; then
-    data_row "elasticsearch" "$(get_status_text elasticsearch)" "InDocker: elasticsearch:9200" "ES ${ELASTICSEARCH_VERSION:-7.17}"
+    data_row "elasticsearch" "$(get_status_text elasticsearch)" "InDocker: elasticsearch:9200" "ES ${ELASTICSEARCH_VERSION}"
 fi
 
 if [[ "${ROLL_OPENSEARCH:-0}" == "1" ]]; then
-    data_row "opensearch" "$(get_status_text opensearch)" "InDocker: opensearch:9200" "OS ${OPENSEARCH_VERSION:-2.5}"
+    data_row "opensearch" "$(get_status_text opensearch)" "InDocker: opensearch:9200" "OS ${OPENSEARCH_VERSION}"
 fi
 
 if [[ "${ROLL_RABBITMQ:-0}" == "1" ]]; then

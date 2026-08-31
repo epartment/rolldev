@@ -92,7 +92,7 @@ function initConfigSchema() {
     ROLL_CONFIG_SCHEMA_KEYS+=(TRAEFIK_LISTEN); ROLL_CONFIG_SCHEMA_VALUES+=("string:127.0.0.1")
     
     # PHP configuration
-    ROLL_CONFIG_SCHEMA_KEYS+=(PHP_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:8.1")
+    ROLL_CONFIG_SCHEMA_KEYS+=(PHP_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     ROLL_CONFIG_SCHEMA_KEYS+=(PHP_XDEBUG_3); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:1")
     ROLL_CONFIG_SCHEMA_KEYS+=(PHP_MEMORY_LIMIT); ROLL_CONFIG_SCHEMA_VALUES+=("string:2G")
     
@@ -101,24 +101,24 @@ function initConfigSchema() {
     
     # Database configuration
     ROLL_CONFIG_SCHEMA_KEYS+=(DB_DISTRIBUTION); ROLL_CONFIG_SCHEMA_VALUES+=("string:mariadb")
-    ROLL_CONFIG_SCHEMA_KEYS+=(DB_DISTRIBUTION_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:10.4")
-    ROLL_CONFIG_SCHEMA_KEYS+=(MYSQL_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:8.0")
-    ROLL_CONFIG_SCHEMA_KEYS+=(MARIADB_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:10.4")
+    ROLL_CONFIG_SCHEMA_KEYS+=(DB_DISTRIBUTION_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(MYSQL_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(MARIADB_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     
     # Service version configurations
-    ROLL_CONFIG_SCHEMA_KEYS+=(ELASTICSEARCH_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:7.17")
-    ROLL_CONFIG_SCHEMA_KEYS+=(RABBITMQ_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:3.11")
-    ROLL_CONFIG_SCHEMA_KEYS+=(REDIS_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:7.0")
-    ROLL_CONFIG_SCHEMA_KEYS+=(DRAGONFLY_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:latest")
-    ROLL_CONFIG_SCHEMA_KEYS+=(VARNISH_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:7.0")
-    ROLL_CONFIG_SCHEMA_KEYS+=(OPENSEARCH_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:2.5")
-    ROLL_CONFIG_SCHEMA_KEYS+=(MONGO_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:6.0")
-    ROLL_CONFIG_SCHEMA_KEYS+=(NGINX_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:1.27")
-    ROLL_CONFIG_SCHEMA_KEYS+=(MAGEPACK_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:2.3")
-    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_SELENIUM_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:3.141.59")
+    ROLL_CONFIG_SCHEMA_KEYS+=(ELASTICSEARCH_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(RABBITMQ_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(REDIS_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(DRAGONFLY_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(VARNISH_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(OPENSEARCH_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(MONGO_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(NGINX_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(MAGEPACK_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_SELENIUM_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     
     # Node configuration
-    ROLL_CONFIG_SCHEMA_KEYS+=(NODE_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:18")
+    ROLL_CONFIG_SCHEMA_KEYS+=(NODE_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     
     # Nginx configuration
     ROLL_CONFIG_SCHEMA_KEYS+=(NGINX_TEMPLATE); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
@@ -373,19 +373,26 @@ function loadRollConfig() {
     export GROUP_ID="$(id -g)"
     export OSTYPE="${OSTYPE}"
     
-    # Set defaults for unset values
+    # Validate environment type before anything derives from it
+    if ! assertValidEnvType; then
+        return 1
+    fi
+    
+    # Environment-type defaults first: they must see the variables still unset, so they can fill in
+    # what this type needs without overriding what the project explicitly configured.
+    applyEnvTypeDefaults
+    
+    # Schema literals fill whatever nothing else has set by now
     local i=0
     while [[ $i -lt ${#ROLL_CONFIG_SCHEMA_KEYS[@]} ]]; do
         setConfigDefault "${ROLL_CONFIG_SCHEMA_KEYS[$i]}"
         i=$((i + 1))
     done
     
-    # Validate environment type
-    if ! assertValidEnvType; then
-        return 1
-    fi
+    # Warn about unpinned versions of enabled services and fall back to the recommended value
+    applyVersionPinFallbacks
     
-    # Post-processing for specific configurations
+    # Derived values last, once every input has its final value
     postProcessConfig
     
     return 0
@@ -408,6 +415,162 @@ function setConfigValue() {
     export "$key"="$value"
 }
 
+## Apply an environment-type default. Unlike setConfigDefault, which fills in the schema literal,
+## this expresses "what this environment type needs unless the project said otherwise", so it must
+## run BEFORE the schema loop and must never override a value the user actually wrote in
+## .env.roll. A key already in the cache came from a config file, so it is left alone.
+function setConfigDerived() {
+    local key="$1"
+    local value="$2"
+
+    if [[ $(findConfigIndex "$key") -ge 0 ]]; then
+        return 0
+    fi
+
+    setConfigValue "$key" "$value"
+}
+
+## Environment-type service defaults. These used to live at the bottom of postProcessConfig, where
+## they could never take effect: the schema loop had already set every toggle to its literal, so
+## the ${VAR:-1} fallbacks only ever saw a value that was present but zero. Running them here, on
+## the still-unset variables, is what makes a magento2 project bring up Varnish, a search engine
+## and RabbitMQ without having to spell out the toggles.
+function applyEnvTypeDefaults() {
+    if [[ "${ROLL_ENV_TYPE}" != "local" ]]; then
+        setConfigDerived ROLL_NGINX 1
+        setConfigDerived ROLL_DB 1
+        setConfigDerived ROLL_REDIS 1
+    fi
+
+    if [[ "${ROLL_ENV_TYPE}" == "magento2" ]]; then
+        setConfigDerived ROLL_VARNISH 1
+        setConfigDerived ROLL_ELASTICSEARCH 1
+        setConfigDerived ROLL_RABBITMQ 1
+    fi
+
+    ## DB_DISTRIBUTION_VERSION is the value the image tag is built from; MYSQL_VERSION and
+    ## MARIADB_VERSION are the older per-distribution spellings. Derive from whichever matches the
+    ## selected distribution, and only when that one was actually provided.
+    if [[ $(findConfigIndex DB_DISTRIBUTION_VERSION) -lt 0 ]]; then
+        if [[ "${DB_DISTRIBUTION}" == "mysql" ]]; then
+            [[ -n "${MYSQL_VERSION}" ]] && setConfigDerived DB_DISTRIBUTION_VERSION "${MYSQL_VERSION}"
+        else
+            [[ -n "${MARIADB_VERSION}" ]] && setConfigDerived DB_DISTRIBUTION_VERSION "${MARIADB_VERSION}"
+        fi
+    fi
+
+    return 0
+}
+
+## The version a project is currently running for an unpinned key: the literal that used to be
+## this key's schema default. It is deliberately NOT the environment type's init.env value - a
+## project that never pinned the key has been running the schema default all along, so that is what
+## must be written into .env.roll. Recommending init.env here would jump, for example, an existing
+## magento2 project from Elasticsearch 7.17 to 8.11 on upgrade, which is precisely the silent
+## version change this whole mechanism exists to prevent. New projects get init.env copied by
+## env-init, so they never reach this path.
+function getLegacyDefaultVersion() {
+    local key="$1"
+
+    case "$key" in
+        PHP_VERSION) echo "8.1" ;;
+        DB_DISTRIBUTION_VERSION) echo "10.4" ;;
+        MYSQL_VERSION) echo "8.0" ;;
+        MARIADB_VERSION) echo "10.4" ;;
+        ELASTICSEARCH_VERSION) echo "7.17" ;;
+        RABBITMQ_VERSION) echo "3.11" ;;
+        REDIS_VERSION) echo "7.0" ;;
+        DRAGONFLY_VERSION) echo "latest" ;;
+        VARNISH_VERSION) echo "7.0" ;;
+        OPENSEARCH_VERSION) echo "2.5" ;;
+        # the mongodb fragment interpolated MONGODB_VERSION, a key the schema never defined, so
+        # its own ":-7" literal is what actually ran - not the schema's unused 6.0
+        MONGO_VERSION) echo "7" ;;
+        NGINX_VERSION) echo "1.27" ;;
+        MAGEPACK_VERSION) echo "2.3" ;;
+        ROLL_SELENIUM_VERSION) echo "3.141.59" ;;
+        NODE_VERSION) echo "18" ;;
+        *) echo "" ;;
+    esac
+}
+
+## Every enabled service should have its version pinned in .env.roll. Previously an omitted pin
+## silently resolved to a schema literal, so a project could change PHP or database version just by
+## upgrading roll.
+##
+## In 0.8.0 this warns and falls back to the recommended value, so existing projects keep running
+## the images they already ran. In 0.9.0 the fallback goes away and a missing pin becomes fatal.
+## `roll config fix-pins` writes the recommended lines into .env.roll.
+function collectMissingVersionPins() {
+    ROLL_MISSING_PINS=()
+
+    ## env.cmd never appends the php-fpm partial for the local type, so it needs no PHP or Node
+    if [[ "${ROLL_ENV_TYPE}" != "local" ]]; then
+        [[ -z "${PHP_VERSION}" ]] && ROLL_MISSING_PINS+=(PHP_VERSION)
+        [[ -z "${NODE_VERSION}" ]] && ROLL_MISSING_PINS+=(NODE_VERSION)
+    fi
+
+    ## toggle:version pairs; the version is required only when its service is switched on
+    local requirements=(
+        "ROLL_NGINX:NGINX_VERSION"
+        "ROLL_DB:DB_DISTRIBUTION_VERSION"
+        "ROLL_REDIS:REDIS_VERSION"
+        "ROLL_DRAGONFLY:DRAGONFLY_VERSION"
+        "ROLL_VARNISH:VARNISH_VERSION"
+        "ROLL_ELASTICSEARCH:ELASTICSEARCH_VERSION"
+        "ROLL_OPENSEARCH:OPENSEARCH_VERSION"
+        "ROLL_RABBITMQ:RABBITMQ_VERSION"
+        "ROLL_MONGODB:MONGO_VERSION"
+        "ROLL_MAGEPACK:MAGEPACK_VERSION"
+        "ROLL_SELENIUM:ROLL_SELENIUM_VERSION"
+    )
+
+    local i=0
+    local toggle="" version_key="" toggle_value="" version_value=""
+    while [[ $i -lt ${#requirements[@]} ]]; do
+        toggle="${requirements[$i]%%:*}"
+        version_key="${requirements[$i]##*:}"
+        eval "toggle_value=\${${toggle}:-0}"
+        eval "version_value=\${${version_key}:-}"
+
+        if [[ "${toggle_value}" == "1" && -z "${version_value}" ]]; then
+            ROLL_MISSING_PINS+=("${version_key}")
+        fi
+        i=$((i + 1))
+    done
+
+    return 0
+}
+
+## Warn about unpinned versions and fall back to the recommended value so the environment still
+## comes up exactly as it did before. Becomes a hard error in 0.9.0.
+function applyVersionPinFallbacks() {
+    collectMissingVersionPins
+
+    if (( ${#ROLL_MISSING_PINS[@]} == 0 )); then
+        return 0
+    fi
+
+    local i=0
+    local key="" value=""
+    warning "This ${ROLL_ENV_TYPE} environment enables services whose versions are not pinned."
+    warning "Roll is falling back to a built-in version, which means upgrading roll can silently"
+    warning "change which image this project runs. From 0.9.0 this will be an error."
+    warning "These are the versions the project is running right now - run \`roll config fix-pins\`"
+    warning "to write them into .env.roll, or add them by hand:"
+    >&2 echo ""
+    while [[ $i -lt ${#ROLL_MISSING_PINS[@]} ]]; do
+        key="${ROLL_MISSING_PINS[$i]}"
+        value="$(getLegacyDefaultVersion "${key}")"
+        >&2 echo "    ${key}=${value}"
+        setConfigValue "${key}" "${value}"
+        i=$((i + 1))
+    done
+    >&2 echo ""
+
+    return 0
+}
+
 ## Post-process configuration after loading
 function postProcessConfig() {
     # Set PHP variant based on environment type
@@ -418,15 +581,6 @@ function postProcessConfig() {
     # Set Node.js variant
     if [[ "${NODE_VERSION}" != "0" ]]; then
         export ROLL_SVC_PHP_NODE="-node${NODE_VERSION}"
-    fi
-    
-    # Database distribution defaults
-    if [[ -z "${DB_DISTRIBUTION_VERSION}" ]]; then
-        if [[ "${DB_DISTRIBUTION}" == "mysql" ]]; then
-            export DB_DISTRIBUTION_VERSION="${MYSQL_VERSION:-8.0}"
-        else
-            export DB_DISTRIBUTION_VERSION="${MARIADB_VERSION:-10.4}"
-        fi
     fi
     
     # XDebug version configuration
@@ -446,14 +600,12 @@ function postProcessConfig() {
         export SSH_AUTH_SOCK_PATH_ENV="/run/host-services/ssh-auth.sock"
     fi
     
-    # Environment-specific defaults
+    # Bash history and SSH directories. Always exported, even when empty: the compose fragments
+    # interpolate it unconditionally, and an unset variable makes docker compose warn.
     if [[ "${ROLL_ENV_TYPE}" != "local" ]]; then
-        export ROLL_NGINX="${ROLL_NGINX:-1}"
-        export ROLL_DB="${ROLL_DB:-1}"
-        export ROLL_REDIS="${ROLL_REDIS:-1}"
-        
-        # Bash history and SSH directories
         export CHOWN_DIR_LIST="/bash_history /home/www-data/.ssh ${ROLL_CHOWN_DIR_LIST:-}"
+    else
+        export CHOWN_DIR_LIST=""
     fi
     
     # Magento 1 specific configuration
@@ -471,10 +623,6 @@ function postProcessConfig() {
     
     # Magento 2 specific configuration
     if [[ "${ROLL_ENV_TYPE}" == "magento2" ]]; then
-        export ROLL_VARNISH="${ROLL_VARNISH:-1}"
-        export ROLL_ELASTICSEARCH="${ROLL_ELASTICSEARCH:-1}"
-        export ROLL_RABBITMQ="${ROLL_RABBITMQ:-1}"
-        
         if [[ "${ROLL_MAGENTO_STATIC_CACHING}" == "1" ]]; then
             if [[ "${ROLL_ADMIN_AUTOLOGIN}" == "1" ]]; then
                 export NGINX_TEMPLATE="${NGINX_TEMPLATE:-magento2-autologin.conf}"
@@ -489,6 +637,10 @@ function postProcessConfig() {
             fi
         fi
     fi
+    # env.cmd used to export these unconditionally; the compose fragments still interpolate them
+    # for every environment type, so keep them defined even when nothing derived a value.
+    export NGINX_TEMPLATE="${NGINX_TEMPLATE:-}"
+    export NGINX_PUBLIC="${NGINX_PUBLIC:-}"
 }
 
 ## Validate configuration file without loading

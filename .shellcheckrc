@@ -110,3 +110,8 @@ disable=SC2178
 # `commands/magento2/magepack.cmd` ends with unreachable debug output left from earlier work; kept
 # out of scope for this release, not treated as a defect worth fixing here.
 disable=SC2317
+
+# Service toggles such as ROLL_DB reach the command files as exports from utils/config.sh rather
+# than by assignment, so ShellCheck reads them as possible misspellings of ROLL_DIR. Same
+# sourced-into-bin/roll boundary as SC2034 above.
+disable=SC2153

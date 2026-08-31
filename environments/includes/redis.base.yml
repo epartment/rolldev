@@ -1,7 +1,7 @@
 services:
   redis:
     hostname: "${ROLL_ENV_NAME}-redis"
-    image: ${ROLL_IMAGE_REPOSITORY}/redis:${REDIS_VERSION:-5.0}
+    image: ${ROLL_IMAGE_REPOSITORY}/redis:${REDIS_VERSION}
     volumes:
       - redis:/data
 

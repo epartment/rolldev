@@ -82,14 +82,14 @@ cosmetic one. Anything touching these areas needs testing on both:
 | Bash version | 3.2.57 (system bash) | usually 5.x | Why the Bash 3.2 constraint exists; use `bash 3.2` compatible syntax only |
 | File sync | Mutagen session, named volume for the web root | direct bind mount, no Mutagen | `environments/<type>/<type>.darwin.yml`, `commands/sync.cmd:33-35` (fatals off darwin) |
 | `sed -i` | BSD — requires a backup suffix | GNU — suffix optional | Always use `sed_inplace` (`utils/core.sh:167`) |
-| `ping` flags | `-t` is a **timeout** | `-t` is the **TTL** | `isOnline` (`utils/core.sh:161`) is wrong on Linux — finding **M11** |
+| Network probe | `ping` (unreliable) | `ping` (unreliable) | `isOnline` probes `https://ghcr.io/v2/` with `curl -m 3` instead, avoiding platform flag differences and ICMP blockage |
 | SSH agent socket | fixed host path `/run/host-services/ssh-auth.sock` | `${SSH_AUTH_SOCK}` from the host, and a socat proxy unless UID is 1000 | `environments/includes/php-fpm.darwin.yml` vs `.linux.yml`, `utils/config.sh:445-447` |
 | `.test` DNS | automatic via `/etc/resolver/test` | manual — `roll install` only prints a warning | `commands/install.cmd:56-66` |
 | Root CA trust | `security add-trusted-cert` | Fedora/CentOS and Debian/Ubuntu paths only; other distros silently skipped | `commands/install.cmd:29-52`, finding **L10** |
 | tunnel key permissions | untouched | `chown root:root` on `ssh_key.pub`, because bind mounts are native | `commands/install.cmd:82-84` |
 | Xdebug host | `host.docker.internal` | container gateway address, looked up at runtime | `commands/debug.cmd:13-21` |
 | `mapfile` | absent (bash 3.2) | present | `commands/status.cmd:20-28` shows the required fallback |
-| CI coverage | **none** | `ubuntu-latest` | All five workflows; finding **M10** |
+| CI coverage | `macos-latest`: ShellCheck + Docker-free smoke | `ubuntu-latest`: ShellCheck + Docker-free smoke | `.github/workflows/shellcheck.yml` matrix |
 
 Prerequisites: Docker (Desktop on macOS/Windows, Engine on Linux) with `docker compose` ≥ 2.2.3, and
 Homebrew. On macOS, Mutagen is installed automatically on first `roll sync` if missing.
@@ -185,18 +185,25 @@ literal default value. Loading proceeds in this order (`loadRollConfig`, `utils/
 1. `~/.roll/.env.roll`, then legacy `~/.roll/.env` — global settings.
 2. `${ROLL_ENV_PATH}/.env.roll` — project settings, overriding global.
 3. OS detection sets `ROLL_ENV_SUBT` to `darwin`, `linux`, or `wsl`.
-4. `setConfigDefault` fills in every schema key that has a literal default and is not yet set.
-5. `assertValidEnvType` checks that `environments/<type>/<type>.base.yml` exists.
-6. `postProcessConfig` derives image variants (`ROLL_SVC_PHP_VARIANT`, `ROLL_SVC_PHP_NODE`), the
+4. `assertValidEnvType` checks that `environments/<type>/<type>.base.yml` exists.
+5. `applyEnvTypeDefaults` fills in what the environment type needs — the `magento2` service
+   toggles, the non-`local` base services, the DB distribution version — but never overwrites a key
+   the project set itself.
+6. `setConfigDefault` fills in every schema key that still has no value and carries a literal
+   default.
+7. `applyVersionPinFallbacks` warns about every enabled service with no version pin and falls back
+   to the version the project was already running.
+8. `postProcessConfig` derives image variants (`ROLL_SVC_PHP_VARIANT`, `ROLL_SVC_PHP_NODE`), the
    Xdebug tag, and the nginx template name.
 
-Step 4 running before step 6 is the root cause of finding **M1** below: any `${VAR:-default}`
-expression in step 6 (or in `commands/env.cmd`) is unreachable for a key that has a literal schema
-default, because step 4 already gave it a value.
+**The order matters.** Env-type defaults have to run before the schema literals, or every
+`${VAR:-default}` in step 5 is unreachable — the literal has already given the key a value, and
+`:-` only substitutes when unset or empty. Derivations that depend on final input values run last.
 
 Every value is exported, so it reaches `docker compose` both through `--env-file .env.roll` and
-through the process environment. Where the two disagree, the exported value wins — which is why the
-`${...:-fallback}` defaults written inside the YAML fragments are mostly dead (finding **M2**).
+through the process environment. Where the two disagree, the exported value wins, so the
+`${...:-fallback}` defaults inside the YAML fragments are not the effective defaults; the service
+version fallbacks have been removed from the fragments for that reason.
 
 ### How a compose invocation is assembled
 
@@ -266,7 +273,7 @@ responsibility is still describable.
 |---|---|---|---|
 | `bin/roll` | 98 lines | Entry point, dispatch, argument parsing | **Coherent** |
 | `utils/core.sh` | 184 lines | Messaging helpers, array/version utilities, network peering | **Coherent** — the three box-drawing functions are near-identical triplets (finding **L4**) |
-| `utils/config.sh` | 606 lines | Config schema, loading, validation, post-processing | **Coherent**, but owns defaults that `commands/env.cmd` also owns (**M1**) |
+| `utils/config.sh` | 606 lines | Config schema, loading, validation, post-processing | **Coherent**; sole owner of configuration defaults |
 | `utils/registry.sh` | 461 lines | Command discovery and priority resolution | **Oversized for what it delivers** — ~200 lines serve `roll registry`'s reporting subcommands; the metadata layer they report on is a stub (**M6**) |
 | `utils/env.sh` | 108 lines | Env path location, partial precedence, env-type validation | **Coherent** |
 | `utils/install.sh` | 63 lines | Host install assertion, SSH config | **Coherent** |
@@ -287,8 +294,6 @@ part. These are the couplings that are not visible from it:
 
 | A | B | Mechanism | What breaks if separated |
 |---|---|---|---|
-| `utils/config.sh` (`postProcessConfig`) | `commands/env.cmd:24-105` | The **same** env-type defaulting logic is written twice, in full: PHP/Node image variants, DB distribution version, Xdebug tag, nginx template, `CHOWN_DIR_LIST`, magento1/magento2 service toggles | Nothing breaks — they already disagree. `env.cmd`'s copy is dead for keys with literal schema defaults, so the two produce different results depending on which keys `.env.roll` sets (**M1**) |
-| `utils/config.sh` schema defaults | `environments/**/*.yml` `${VAR:-fallback}` | Config exports a value for every key with a literal default, so the YAML fallback never applies | The YAML fallbacks read as the effective default and are not; eight of them disagree with the schema (**M2**) |
 | `commands/backup.cmd` | `commands/restore.cmd`, `commands/restore-full.cmd` | Undocumented on-disk contract: the staging directory `<cwd>/.roll/backups`, the archive layout, and the metadata JSON. Each file re-derives the path independently (documented in a comment at `commands/backup.cmd:22-35`) | Changing the layout in one file silently breaks the others; `restore-full.cmd` never loads the env config at all, so it resolves paths differently |
 | `commands/status.cmd:6` | `docker/docker-compose.yml` | The shared network name is recovered by `grep -A3 'networks:' … \| tail -n1 \| sed`, i.e. by text-parsing YAML | Reordering keys in `docker-compose.yml` breaks `roll status`'s "is RollDev running" check |
 | `commands/describe.cmd:18`, `commands/vnc.cmd:12` | Compose container naming | Both reconstruct container names by string concatenation instead of asking `roll env ps -q` — and they disagree: `describe` uses v2 (`name-svc-1`), `vnc` uses v1 (`name_svc_1`) | `roll vnc` cannot find a container under the Compose v2 that `bin/roll:26` requires (**M8**) |
@@ -429,9 +434,9 @@ Registered in `utils/config.sh:70-87`. Each enabled toggle appends the matching 
 | `ROLL_MAGEPACK` | 0 | Magepack bundling | `magento2` only |
 | `ROLL_INCLUDE_GIT` | 0 | bind-mounts `.git` into the container | needed on macOS with Mutagen |
 
-For a `magento2` project the effective values of `ROLL_VARNISH`, `ROLL_ELASTICSEARCH` and
-`ROLL_RABBITMQ` come from `init.env`, not from the env-type block in `commands/env.cmd:73-76` — see
-finding **M1**.
+For a `magento2` project `ROLL_VARNISH`, `ROLL_ELASTICSEARCH` and `ROLL_RABBITMQ` default to `1`
+via `applyEnvTypeDefaults` in `utils/config.sh`, whether or not `init.env` spelled them out. A
+value in `.env.roll` still wins.
 
 ### Local, test/staging, and production
 
@@ -555,10 +560,13 @@ sphinx-build -b html docs docs/_build/html
 These are enforced by review rather than by tooling, except where noted.
 
 - **Every change must work on macOS and Linux.** Both are first-class targets — see
-  [Supported platforms](#supported-platforms) for the table of real behavioural differences. CI only
-  runs Ubuntu (finding **M10**), so the macOS half is on the author: run the affected command under
-  `/bin/bash` on macOS before merging. The recurring traps are bash 3.2, BSD vs GNU flag semantics
-  (`sed`, `ping`, `stat`), Mutagen-vs-bind-mount file sync, and the SSH agent socket path.
+  [Supported platforms](#supported-platforms) for the table of real behavioural differences. CI runs
+  a `macos-latest` + `ubuntu-latest` matrix (ShellCheck plus the Docker-free smoke script,
+  `.github/scripts/smoke.sh`), but the smoke set only covers commands that need neither a project
+  checkout nor a running daemon — anything touching `roll env`/service containers is still on the
+  author: run the affected command under `/bin/bash` on macOS before merging. The recurring traps
+  are bash 3.2, BSD vs GNU flag semantics (`sed`, `ping`, `stat`), Mutagen-vs-bind-mount file sync,
+  and the SSH agent socket path.
 - **Bash 3.2 only.** No associative arrays, no `${var^}`/`${var,}` case modification, no `mapfile`
   without a fallback (`commands/status.cmd:20-28` shows the pattern). macOS ships bash 3.2.57 and
   `bin/roll` runs under `#!/usr/bin/env bash`, so a bash-4 construct fails there while passing on
@@ -606,60 +614,6 @@ rather than defects, and of the [boundary findings](#boundary-findings) above.
 None found.
 
 ### Medium
-
-**M1. Env-type service defaults are dead code; the toggles they set resolve to 0** —
-`utils/config.sh:378-381` and `utils/config.sh:473-476`, duplicated at `commands/env.cmd:73-76`
-
-- *What:* `loadRollConfig` runs `setConfigDefault` for every schema key (`utils/config.sh:378-381`)
-  *before* calling `postProcessConfig` (`utils/config.sh:389`). `ROLL_VARNISH`,
-  `ROLL_ELASTICSEARCH` and `ROLL_RABBITMQ` are declared `boolean:0`, so by the time
-  `postProcessConfig` evaluates `export ROLL_VARNISH="${ROLL_VARNISH:-1}"` the variable is already
-  `0` and the `:-1` never applies. `commands/env.cmd:73-76` repeats the same block and fails the same
-  way. **Verified** by loading a minimal `magento2` `.env.roll` (containing only `ROLL_ENV_NAME` and
-  `ROLL_ENV_TYPE`) through `loadEnvConfig`: `ROLL_VARNISH=0`, `ROLL_ELASTICSEARCH=0`,
-  `ROLL_RABBITMQ=0`.
-- *Why it matters:* A `magento2` environment whose `.env.roll` does not list these keys comes up with
-  no Varnish, no search engine and no message queue — and Magento's own configuration will point at
-  services that are not running. New projects are shielded because
-  `environments/magento2/init.env` sets all three explicitly, so the bug only surfaces on
-  hand-written or older `.env.roll` files, which is exactly when it is hardest to attribute. The same
-  ordering makes `postProcessConfig`'s `DB_DISTRIBUTION_VERSION` branch (`utils/config.sh:424-430`)
-  unreachable.
-- *Suggested fix:* Move the `setConfigDefault` loop to *after* `postProcessConfig`, so per-type
-  derivation runs against unset variables and the schema fills in only what is still missing. Then
-  delete the duplicated block at `commands/env.cmd:24-105` outright — it is the second copy of logic
-  `utils/config.sh` already owns, and keeping both guarantees they drift (see the coupling map).
-  Add a test that loads a minimal `.env.roll` per env type and asserts the effective toggles.
-
-**M2. YAML image-version fallbacks are unreachable and disagree with the schema** —
-`utils/config.sh:95-121` vs `environments/`
-
-- *What:* Because every schema key with a literal default is exported before `docker compose` runs,
-  the `${VAR:-fallback}` defaults written into the fragments never apply. Eight of them name a
-  different version from the schema:
-
-  | Variable | Schema default (`utils/config.sh`) | Fragment fallback | Fragment |
-  |---|---|---|---|
-  | `PHP_VERSION` | `8.1` | `8.3` | `environments/includes/php-fpm.base.yml:22` |
-  | `NODE_VERSION` | `18` | `22` | `environments/includes/php-fpm.base.yml:27` |
-  | `ELASTICSEARCH_VERSION` | `7.17` | `8.11` | `environments/includes/elasticsearch.base.yml:4` |
-  | `OPENSEARCH_VERSION` | `2.5` | `2.19` | `environments/includes/opensearch.base.yml:4` |
-  | `RABBITMQ_VERSION` | `3.11` | `3.8` | `environments/includes/rabbitmq.base.yml:4` |
-  | `REDIS_VERSION` | `7.0` | `5.0` | `environments/includes/redis.base.yml:4` |
-  | `VARNISH_VERSION` | `7.0` | `6.0` | `environments/includes/varnish.base.yml:10` |
-  | `NGINX_VERSION` | `1.27` | `1.26` | `environments/includes/nginx.base.yml:4` |
-
-  A third value exists for some of these in `describe.cmd` (PHP `8.2`, Node `18`, Redis `7.2`), used
-  only for display. **Verified** for `PHP_VERSION`: a minimal `magento2` `.env.roll` resolves to
-  `8.1`, not the `8.3` the fragment appears to promise.
-- *Why it matters:* Reading the fragment gives the wrong answer about what a project without an
-  explicit pin actually gets, and the schema's values are the older ones — a `magento2` project
-  missing `PHP_VERSION` silently runs PHP 8.1 against Magento 2.4.7+. `roll env describe` then
-  reports a third number.
-- *Suggested fix:* Make the schema the single source of truth: bring `utils/config.sh`'s defaults up
-  to the versions the fragments claim, then reduce the fragments to bare `${VAR}` so a missing value
-  fails loudly instead of resolving to a stale one. Drop the hardcoded fallbacks in
-  `commands/describe.cmd:108,120,133` and print the resolved values.
 
 **M3. The network-existence check in `env up` never matches, so a redundant compose pass runs every
 time** — `commands/env.cmd:206`
@@ -723,42 +677,6 @@ time** — `commands/env.cmd:206`
 - *Suggested fix:* Resolve the container through Compose instead of reconstructing the name:
   `roll env ps -q "${service}"`, then `docker container inspect` for the hostname. That also removes
   the assumption of a single replica. Apply the same change to `commands/describe.cmd:18`.
-
-**M10. Nothing tests the macOS half of a platform the tool must support** —
-`.github/workflows/shellcheck.yml:17`
-
-- *What:* All five workflows run on `ubuntu-latest`. There is no macOS job, and no runtime smoke test
-  on any platform — CI lints shell sources and builds documentation, nothing more.
-- *Why it matters:* macOS is the primary developer platform *and* the one with the divergent
-  behaviour (bash 3.2, BSD flag semantics, Mutagen), so every platform-specific defect in this list
-  is invisible to CI by construction. **M11** is an example — a bug that only manifests on Linux,
-  shipped from macOS machines.
-- *Suggested fix:* Add a `macos-latest` job running the same ShellCheck invocation, then a minimal
-  matrix smoke test across `macos-latest` and `ubuntu-latest` that needs no Docker daemon:
-  `./bin/roll version`, `./bin/roll registry validate`, `./bin/roll registry categories`,
-  `./bin/roll config schema`, and a `roll env-init` into a temporary directory followed by
-  `roll config validate`. On macOS, invoke via `/bin/bash ./bin/roll` so bash 3.2 is exercised rather
-  than whatever the runner has on `PATH`. That set would catch **M7**.
-
-**M11. `isOnline` always reports offline on Linux, so `roll svc up` never refreshes images** —
-`utils/core.sh:161-163`
-
-- *What:* `isOnline` probes with `ping -q -c1 -t 2 8.8.8.8`. `-t` means *timeout in seconds* on BSD
-  ping (macOS) but *TTL* on GNU and BusyBox ping (Linux), so on Linux the probe sends a packet with
-  TTL 2 and both public resolvers are further away than two hops. **Verified** in a Linux container:
-  `-t 2` gives 100 % packet loss and exit 1, `-t 64` and `-W 2` both succeed, and the identical
-  command exits 0 on the macOS host — so the flag semantics, not connectivity, are the cause.
-- *Why it matters:* The only caller is `commands/svc.cmd:50-52`, which skips `roll svc pull` when the
-  probe says offline. On Linux the shared-service images are therefore never pulled by `roll svc up`,
-  so Traefik, dnsmasq, Mailpit and the tunnel silently stay on whatever tags were first fetched. That
-  is precisely the platform where nobody is watching, and the symptom — a stale image — surfaces much
-  later as unexplained behaviour rather than as a failed pull.
-- *Suggested fix:* Do not use `ping` for a reachability check at all; ICMP is also blocked in many
-  networks and container runtimes, which would produce the same false negative on macOS. Probe the
-  registry that is actually needed, with a portable timeout:
-  `curl -fsS -m 3 -o /dev/null https://ghcr.io/v2/ && echo true || echo false`. If `ping` must stay,
-  branch on `${ROLL_ENV_SUBT}` and use `-W 2` on Linux — but note `isOnline` is in `utils/core.sh`,
-  which is sourced before the config is loaded, so `$OSTYPE` is the only signal available there.
 
 ### Low
 
@@ -878,9 +796,9 @@ Checked during this review and found correct, so the next reader does not re-inv
   (`utils/core.sh:167`) handles the BSD/GNU `sed -i` difference, `commands/sync.cmd:33-35` refuses to
   run off darwin instead of failing obscurely, `commands/debug.cmd:13-21` resolves the Xdebug host
   per platform, `commands/status.cmd:20-28` guards `mapfile`, and `commands/tableplus.cmd` and
-  `commands/vnc.cmd` are correctly macOS- and Linux-specific respectively. `ping` in `isOnline`
-  (**M11**) and the missing `wsl` fragment (**M12**) are the only two places where the platform
-  difference was not handled.
+  `commands/vnc.cmd` are correctly macOS- and Linux-specific respectively. `isOnline` now probes
+  with `curl` instead of `ping`, avoiding platform flag differences. The missing `wsl` fragment
+  (**M12**) is handled correctly.
 - **Bash 3.2 compliance.** The parallel-indexed-array pattern in `utils/config.sh` and
   `utils/registry.sh` is applied consistently; no associative arrays anywhere. `commands/status.cmd`
   correctly guards its `mapfile` use with a `while read` fallback. Case modification is always done
@@ -895,10 +813,9 @@ Checked during this review and found correct, so the next reader does not re-inv
   present in `ghcr.io/epartment/roll/mariadb:11.4` (verified in a running container); only
   `mysqldump` was removed, which is why **H2** is scoped to `dump` alone.
 - **`NGINX_TEMPLATE` derivation works.** It is declared `string:optional`, so `setConfigDefault`
-  skips it and the `${NGINX_TEMPLATE:-…}` chains in `utils/config.sh:460-491` and
-  `commands/env.cmd:61-95` do resolve as written — unlike the boolean toggles in **M1**. The
-  apparently redundant trailing `export` lines in the `magento1`/`magento2` blocks are harmless
-  because `:-` preserves the value set by the branch above.
+  never fills it in and the `${NGINX_TEMPLATE:-…}` chains in `postProcessConfig` resolve as
+  written. The apparently redundant trailing `export` lines in the `magento1`/`magento2` blocks are
+  harmless because `:-` preserves the value set by the branch above.
 - **Compose fragment layering.** `appendEnvPartialIfExists` appends rather than replaces, and Compose
   merges list-valued keys by target path, so `environments/magento2/magento2.darwin.yml`'s
   `appdata:/var/www/html` correctly supersedes the bind mount from
@@ -926,11 +843,8 @@ line-audited, and neither backup nor restore was executed against a live environ
 | `docker compose version should be 2.2.3 or higher` | Compose v1, or the plugin is missing | Install the Compose v2 plugin; `docker-compose` (hyphenated) is not used |
 | `invalid project name "…"` from `roll env up` | `ROLL_ENV_NAME` contains uppercase or an illegal character | Lowercase it in `.env.roll`; note the rename orphans the old volumes (finding **M7**) |
 | Environment comes up on an empty database after a rename | `ROLL_ENV_NAME` is the Compose project name and prefixes every named volume | Bring the environment down, copy `oldname_dbdata` to `newname_dbdata`, bring it up |
-| Magento cannot reach Varnish, Elasticsearch or RabbitMQ, and the containers are not running | `.env.roll` omits the toggles, which resolve to `0` despite the env-type default | Finding **M1**; set `ROLL_VARNISH=1`, `ROLL_ELASTICSEARCH=1`, `ROLL_RABBITMQ=1` explicitly |
-| A project silently runs an older PHP or Node than expected | Schema default won over the fragment fallback | Finding **M2**; pin the version in `.env.roll` |
 | `port is already allocated` on `php-fpm` | `ROLL_BROWSERSYNC=1` publishes fixed host ports on that service — the only fragment that publishes any | Set `ROLL_BROWSERSYNC=0`; verify with `roll env config \| grep published`. See `FEATURE-REQUESTS.md` H2 |
 | A command run right after `roll env up` fails to connect to the DB or search engine | No fragment declares a `healthcheck:` and `up` does not pass `--wait`, so it returns when containers *start* | Retry with a wait loop against the service. See `FEATURE-REQUESTS.md` H1 |
-| Shared-service images never update on Linux, however often `roll svc up` runs | `isOnline` uses BSD `ping -t` semantics, so the probe always fails on Linux and `svc pull` is skipped | Finding **M11**; run `roll svc pull` explicitly |
 | `.test` sites show a certificate error on Linux after a clean `roll install` | CA trust is only wired up for Debian- and Fedora-family distributions, and is skipped silently otherwise | Finding **L10**; add `~/.roll/ssl/rootca/certs/ca.cert.pem` to the distribution's trust store manually |
 | `Mutagen sync sessions are not used on "linux" host environments` | `roll sync` is macOS-only | Expected; Linux and WSL bind-mount directly |
 | `Mutagen configuration does not exist for environment type "…"` | Only `magento1`, `magento2` and `shopware` ship a `.mutagen.yml` | Expected; that type uses a bind mount on macOS too |
