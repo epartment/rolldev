@@ -22,6 +22,16 @@ while [ -z "${ROLL_ENV_NAME}" ]; do
   read -p $'\033[32mAn environment name was not provided; please enter one:\033[0m ' ROLL_ENV_NAME
 done
 
+# The env name becomes the Docker Compose project name, which rejects anything but lowercase
+# alphanumerics, hyphens, and underscores, starting with a letter or number. Catch it here instead
+# of letting it fail later with a Docker error that names neither RollDev nor .env.roll.
+while [[ ! "${ROLL_ENV_NAME}" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; do
+  if [[ ! -t 0 ]]; then
+    fatal "Environment name \"${ROLL_ENV_NAME}\" is invalid: it becomes the Docker Compose project name, which must match ^[a-z0-9][a-z0-9_-]*\$ (lowercase alphanumeric characters, hyphens, and underscores, starting with a letter or number)."
+  fi
+  read -p $'\033[31mInvalid environment name; it must match ^[a-z0-9][a-z0-9_-]*$ (lowercase alphanumeric characters, hyphens, and underscores, starting with a letter or number):\033[0m ' ROLL_ENV_NAME
+done
+
 ROLL_ENV_TYPE="${ROLL_PARAMS[1]:-}"
 
 # If roll environment type was not provided, prompt user for it

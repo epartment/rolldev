@@ -196,6 +196,9 @@ function validateConfigValue() {
                 error "Configuration $key is required but empty"
                 return 1
             fi
+            if [[ "$key" == "ROLL_ENV_NAME" && -n "$value" && ! "$value" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+                fatal "ROLL_ENV_NAME=\"$value\" is invalid: it becomes the Docker Compose project name, which must match ^[a-z0-9][a-z0-9_-]*\$ (lowercase alphanumeric characters, hyphens, and underscores, starting with a letter or number). Note that the env name also prefixes every named volume, so renaming an existing environment orphans its old volumes and it comes up on an empty database."
+            fi
             ;;
         integer)
             if ! [[ "$value" =~ ^[0-9]+$ ]]; then

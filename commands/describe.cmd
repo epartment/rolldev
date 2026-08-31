@@ -12,16 +12,38 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
+# Ask Compose once which containers this project has and what state each is in, keyed by service
+# label rather than by a reconstructed container name. Resolving each service individually meant a
+# full roll re-entry per row - config load plus a compose call - which took ~9s on a nine-service
+# project against ~1.3s for the whole command before.
+ROLL_DESCRIBE_SERVICES=()
+ROLL_DESCRIBE_STATES=()
+while IFS='=' read -r describe_service describe_state; do
+    [[ -z "${describe_service}" ]] && continue
+    ROLL_DESCRIBE_SERVICES+=("${describe_service}")
+    ROLL_DESCRIBE_STATES+=("${describe_state}")
+done < <(docker ps -a \
+    --filter "label=com.docker.compose.project=${ROLL_ENV_NAME}" \
+    --format '{{.Label "com.docker.compose.service"}}={{.State}}' 2>/dev/null)
+
 # Get container status (returns "running" or "stopped")
 get_status_text() {
     local service=$1
-    local container="${ROLL_ENV_NAME}-${service}-1"
-    local status=$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null)
-    if [[ "$status" == "running" ]]; then
-        echo "running"
-    else
-        echo "stopped"
-    fi
+    local i=0
+
+    while [[ $i -lt ${#ROLL_DESCRIBE_SERVICES[@]} ]]; do
+        if [[ "${ROLL_DESCRIBE_SERVICES[$i]}" == "$service" ]]; then
+            if [[ "${ROLL_DESCRIBE_STATES[$i]}" == "running" ]]; then
+                echo "running"
+            else
+                echo "stopped"
+            fi
+            return 0
+        fi
+        i=$((i + 1))
+    done
+
+    echo "stopped"
 }
 
 # Print status with color
