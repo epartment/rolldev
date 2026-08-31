@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+## @description: Build or watch a Magento 2 frontend theme inside the project container.
+## @category: magento2
+
+ROLL_USAGE=$(cat <<EOF
+\033[33mUsage:\033[0m
+  theme [all]
+  theme <vendor/name> [build|watch]
+
+  Themes are discovered under \033[32mapp/design/frontend\033[0m in the project. A theme with a
+  Gulpfile.js is built with Gulp unless it (or ROLL_YARN_INSTEAD_OF_GULP=1) uses Yarn scripts
+  instead.
+
+  With no arguments and a terminal attached, a picker offers the available themes and then
+  whether to build or watch. On more than one theme, or when no action is given, an interactive
+  terminal is required; supply the theme and action directly to run non-interactively.
+
+  \033[32mall\033[0m builds every discovered theme.
+
+\033[33mExamples:\033[0m
+  roll theme
+  roll theme all
+  roll theme Epartment/boilerplate build
+  roll theme Epartment/boilerplate watch
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+EOF
+)
