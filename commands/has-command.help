@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+## @description: Check whether a command is available, via its exit code.
+## @category: utility
+
+ROLL_USAGE=$(cat <<EOF
+\033[33mUsage:\033[0m
+  has-command <name>
+
+Checks whether <name> resolves through the command registry, across all four search paths
+(project, home, RECLU, RollDev). Exits 0 if the command is available, 1 if it is not. Prints
+nothing in either case, so it can be used purely for its exit code.
+
+\033[33mExamples:\033[0m
+  roll has-command db && roll db connect
+  roll has-command pull-media || echo "pull-media is not installed"
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+EOF
+)
