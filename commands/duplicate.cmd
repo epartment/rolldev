@@ -442,7 +442,7 @@ function updateMagento2Urls() {
             break
         fi
         sleep 2
-        ((retry_count++))
+        retry_count=$((retry_count + 1))
     done
     
     if [ $retry_count -eq $max_retries ]; then
@@ -713,12 +713,15 @@ function performDuplicate() {
     local current_env_name="$ROLL_ENV_NAME"
     local current_dir="$(pwd)"
     local total_steps=7
+    ## Assignment, not `((current_step++))`: roll runs under `set -e` and a `((expr))` whose
+    ## value is 0 exits 1, so the first post-increment from 0 killed the command silently on
+    ## Linux (bash 5). macOS bash 3.2 does not apply errexit there, which is why it looked fine.
     local current_step=0
     
     logMessage INFO "Duplicating environment '$current_env_name' to '$new_name'"
     
     # Step 1: Create backup
-    ((current_step++))
+    current_step=$((current_step + 1))
     local backup_id
     if ! backup_id=$(createBackup $current_step $total_steps); then
         logMessage ERROR "Failed to create backup"
@@ -726,7 +729,7 @@ function performDuplicate() {
     fi
     
     # Step 2: Setup new environment directory (rsync source code)
-    ((current_step++))
+    current_step=$((current_step + 1))
     local target_dir
     if ! target_dir=$(setupNewEnvironment "$new_name" $current_step $total_steps 2>/dev/null); then
         logMessage ERROR "Failed to setup new environment directory"
@@ -734,29 +737,29 @@ function performDuplicate() {
     fi
     
     # Step 3: Copy backup file to target location AFTER rsync
-    ((current_step++))
+    current_step=$((current_step + 1))
     if ! copyBackupToNewEnvironment "$backup_id" "$new_name" "$current_dir" $current_step $total_steps; then
         logMessage ERROR "Failed to copy backup file to new environment"
         exit 1
     fi
     
     # Step 4: Restore backup from already-copied file
-    ((current_step++))
+    current_step=$((current_step + 1))
     if ! restoreBackup "$backup_id" "$target_dir" "$current_dir" $current_step $total_steps; then
         logMessage ERROR "Backup restoration step failed - stopping duplication process"
         exit 1
     fi
     
     # Step 5: Generate new certificates
-    ((current_step++))
+    current_step=$((current_step + 1))
     generateCertificates "$new_name" "$target_dir" $current_step $total_steps
     
     # Step 6: Update database URLs
-    ((current_step++))
+    current_step=$((current_step + 1))
     updateDatabaseUrls "$new_name" "$target_dir" $current_step $total_steps
     
     # Step 7: Start new environment
-    ((current_step++))
+    current_step=$((current_step + 1))
     startNewEnvironment "$target_dir" $current_step $total_steps
     
     if [[ $DUPLICATE_DRY_RUN -eq 1 ]]; then

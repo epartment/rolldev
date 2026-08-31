@@ -363,7 +363,13 @@ function backupVolume() {
     
     # Create backup directory for volume if it doesn't exist
     mkdir -p "$backup_dir/volumes"
-    
+
+    ## Capture the tar container's status explicitly. Under roll's `set -e` a failing `docker
+    ## run` in the body of an if-branch aborts the whole command before the check below can run,
+    ## which made the "Failed to backup <service> volume" branch dead code and turned a broken
+    ## volume into a silent exit 1.
+    local volume_status=0
+
     # Execute backup with the original working approach - use ubuntu and direct tar compression
     if [[ "$BACKUP_COMPRESSION" == "lz4" ]]; then
         # Handle lz4 separately since tar doesn't support it directly
@@ -372,13 +378,13 @@ function backupVolume() {
                 --mount source="$full_volume_name",target=/data \
                 -v "$backup_dir/volumes":/backup \
                 ubuntu bash \
-                -c "tar -cf - /data | lz4 -9 > /backup/${service_name}.tar.lz4" >/dev/null 2>&1
+                -c "tar -cf - /data | lz4 -9 > /backup/${service_name}.tar.lz4" >/dev/null 2>&1 || volume_status=$?
         else
             docker run --rm --name "$temp_container" \
                 --mount source="$full_volume_name",target=/data \
                 -v "$backup_dir/volumes":/backup \
                 ubuntu bash \
-                -c "tar -cf - /data | lz4 -9 > /backup/${service_name}.tar.lz4"
+                -c "tar -cf - /data | lz4 -9 > /backup/${service_name}.tar.lz4" || volume_status=$?
         fi
     else
         # Use original working approach for gzip, xz, and none
@@ -393,18 +399,18 @@ function backupVolume() {
                 --mount source="$full_volume_name",target=/data \
                 -v "$backup_dir/volumes":/backup \
                 ubuntu bash \
-                -c "$tar_cmd" >/dev/null 2>&1
+                -c "$tar_cmd" >/dev/null 2>&1 || volume_status=$?
         else
             docker run --rm --name "$temp_container" \
                 --mount source="$full_volume_name",target=/data \
                 -v "$backup_dir/volumes":/backup \
                 ubuntu bash \
-                -c "$tar_cmd"
+                -c "$tar_cmd" || volume_status=$?
         fi
     fi
     
     # Check if backup was successful
-    if [[ $? -eq 0 && -f "$backup_dir/volumes/${service_name}$(getCompressionExtension)" ]]; then
+    if [[ $volume_status -eq 0 && -f "$backup_dir/volumes/${service_name}$(getCompressionExtension)" ]]; then
         # Generate checksum
         local checksum=$(sha256sum "$backup_dir/volumes/${service_name}$(getCompressionExtension)" | cut -d' ' -f1)
         echo "$checksum  volumes/${service_name}$(getCompressionExtension)" >> "$backup_dir/metadata/checksums.sha256"
@@ -642,7 +648,11 @@ function verifyBackup() {
             logMessage ERROR "Backup verification failed"
             
             # Show which files failed verification
-            local failed_files=$(echo "$verify_output" | grep -E "(No such file|FAILED)" | head -5)
+            ## `|| true`: grep exits 1 when nothing matches, and an assignment from a command
+            ## substitution carries that status — under roll's `set -e` that would abort here
+            ## and lose the failed-file list this branch exists to print.
+            local failed_files
+            failed_files=$(echo "$verify_output" | grep -E "(No such file|FAILED)" | head -5) || true
             if [[ -n "$failed_files" ]]; then
                 logMessage ERROR "Failed files:"
                 echo "$failed_files" | while read -r line; do
@@ -753,7 +763,7 @@ function performBackup() {
         all)
             total_steps=$((${#enabled_services[@]} + 3))  # services + config + source + metadata
             if [[ $BACKUP_INCLUDE_SOURCE -eq 1 ]]; then
-                ((total_steps++))
+                total_steps=$((total_steps + 1))
             fi
             ;;
         db|database)
@@ -764,27 +774,34 @@ function performBackup() {
             ;;
     esac
     
+    ## Counters are incremented with an assignment, never `((current_step++))`. roll's entry
+    ## point sets `set -e`, and a `((expr))` command whose value is 0 exits 1 — so the FIRST
+    ## post-increment from 0 aborted the whole backup between the "Backup type" line and the
+    ## first progress bar: no stdout, no ERROR line, exit 1. The ERR trap in bin/roll does not
+    ## report it either, because roll never sets `set -E` and an ERR trap is not inherited by
+    ## shell functions. bash 3.2 on macOS does not apply errexit here, so this only ever failed
+    ## on Linux (bash 5) — i.e. the build server, never a developer machine.
     local current_step=0
-    
+
     # Backup based on type
     case "$backup_type" in
         all)
             # Backup all enabled services
             for service_info in "${enabled_services[@]}"; do
                 IFS=':' read -r service_name service_type volume_name <<< "$service_info"
-                ((current_step++))
+                current_step=$((current_step + 1))
                 if backupVolume "$service_name" "$volume_name" "$backup_dir" $current_step $total_steps; then
                     successful_services+=("$service_info")
                 fi
             done
             
             # Backup configurations
-            ((current_step++))
+            current_step=$((current_step + 1))
             backupConfigurations "$backup_dir" $current_step $total_steps
             
             # Backup source code if requested
             if [[ $BACKUP_INCLUDE_SOURCE -eq 1 ]]; then
-                ((current_step++))
+                current_step=$((current_step + 1))
                 backupSourceCode "$backup_dir" $current_step $total_steps
             fi
             ;;
@@ -793,7 +810,7 @@ function performBackup() {
             for service_info in "${enabled_services[@]}"; do
                 IFS=':' read -r service_name service_type volume_name <<< "$service_info"
                 if [[ "$service_type" =~ ^(mysql|mariadb|postgres)$ ]]; then
-                    ((current_step++))
+                    current_step=$((current_step + 1))
                     if backupVolume "$service_name" "$volume_name" "$backup_dir" $current_step $total_steps; then
                         successful_services+=("$service_info")
                     fi
@@ -806,7 +823,7 @@ function performBackup() {
             for service_info in "${enabled_services[@]}"; do
                 IFS=':' read -r service_name service_type volume_name <<< "$service_info"
                 if [[ "$service_type" =~ ^(redis|dragonfly)$ ]]; then
-                    ((current_step++))
+                    current_step=$((current_step + 1))
                     if backupVolume "$service_name" "$volume_name" "$backup_dir" $current_step $total_steps; then
                         successful_services+=("$service_info")
                     fi
@@ -819,7 +836,7 @@ function performBackup() {
             for service_info in "${enabled_services[@]}"; do
                 IFS=':' read -r service_name service_type volume_name <<< "$service_info"
                 if [[ "$service_type" =~ ^(elasticsearch|opensearch)$ ]]; then
-                    ((current_step++))
+                    current_step=$((current_step + 1))
                     if backupVolume "$service_name" "$volume_name" "$backup_dir" $current_step $total_steps; then
                         successful_services+=("$service_info")
                     fi
@@ -832,7 +849,7 @@ function performBackup() {
             for service_info in "${enabled_services[@]}"; do
                 IFS=':' read -r service_name service_type volume_name <<< "$service_info"
                 if [[ "$service_type" == "mongodb" ]]; then
-                    ((current_step++))
+                    current_step=$((current_step + 1))
                     if backupVolume "$service_name" "$volume_name" "$backup_dir" $current_step $total_steps; then
                         successful_services+=("$service_info")
                     fi
@@ -842,7 +859,7 @@ function performBackup() {
             ;;
         config|configuration)
             # Only backup configuration files
-            ((current_step++))
+            current_step=$((current_step + 1))
             backupConfigurations "$backup_dir" $current_step $total_steps
             ;;
         *)
@@ -852,7 +869,7 @@ function performBackup() {
     esac
     
     # Generate metadata with successfully backed up services
-    ((current_step++))
+    current_step=$((current_step + 1))
     generateBackupMetadata "$backup_dir" "${successful_services[@]}"
     showProgress $current_step $total_steps "Generating metadata"
     
