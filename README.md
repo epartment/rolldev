@@ -25,6 +25,7 @@ on unattended Linux hosts alike.
 - [Module boundaries & coupling](#module-boundaries--coupling)
 - [Environments](#environments)
 - [Common tasks](#common-tasks)
+- [Machine interface](#machine-interface)
 - [Conventions](#conventions)
 - [Known issues & improvement points](#known-issues--improvement-points)
 - [Audited and clean](#audited-and-clean)
@@ -531,6 +532,37 @@ pip install -r docs/requirements.txt
 ```bash
 sphinx-build -b html docs docs/_build/html
 ```
+
+## Machine interface
+
+Everything RollDev does is reachable without a terminal, so it can be driven from CI, a deploy
+script, the build server, or an AI assistant. The user-facing guide is
+[docs/machine-interface.md](docs/machine-interface.md); this is the contributor summary of what
+exists and where it lives.
+
+| Surface | Where |
+|---|---|
+| `--format json` on `status`, `env describe`, `registry list`, `env doctor` | the respective `.cmd` files; values escaped through `jsonEscape` in `utils/core.sh` |
+| `roll has-command <name>` — exit 0/1, no output | `commands/has-command.cmd`, resolves through the registry so add-on commands count |
+| `roll env up --wait` | Compose native, made meaningful by the healthchecks in `environments/includes/*.base.yml` |
+| `roll env doctor` | `commands/doctor.cmd` |
+| `roll config check-pins` / `fix-pins` | `commands/config.cmd` |
+| Flag-first prompts | `utils/interact.sh` |
+
+Two rules bind anything added here:
+
+1. **Machine-readable output carries no secrets and no ANSI**, and every value goes through
+   `jsonEscape` rather than being concatenated raw.
+2. **A prompt is never the only route to a value.** Flags and environment variables come first, gum
+   runs only on a TTY, and with no terminal the prompt fails naming the flag that would have
+   answered it — so an unattended run cannot hang. `.github/scripts/test-interact.sh` asserts this
+   and runs in the smoke suite on both platforms.
+
+Note that giving a command a `--flag` means adding it to `ROLL_CMD_ANYARGS` in `bin/roll`, which
+changes how `--help` reaches it: roll stops parsing at the first dash and leaves `ROLL_PARAMS`
+empty. Such a command must render its own help by sourcing `commands/usage.cmd`, never by
+re-invoking `roll <self> --help`, which recurses until killed.
+`.github/scripts/test-syntax.sh` enforces this.
 
 ## Conventions
 
