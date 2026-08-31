@@ -109,7 +109,27 @@ Adapted from the usual defect scale, since these are gaps rather than bugs:
 
 ### Low
 
-None found.
+**L1. `roll db` passes the database password as a process argument** — `commands/db.cmd:51,58,63`
+
+- *What:* `connect`, `import` and `dump` all invoke the client as
+  `-p"${MYSQL_PASSWORD}"`, so the password is visible to anything that can read `ps` inside the db
+  container. Pre-existing; the MariaDB 11 binary probe (finding H2) did not change it either way.
+- *Why it matters:* It is the same class of exposure as RECLU's H2 for TablePlus, which the 0.8.0
+  plan fixes in milestone 24. Fixing it here too would make the rule uniform across both repos.
+- *Suggested fix:* Feed the credentials through `MYSQL_PWD` in the exec environment, or write a
+  `0600` defaults file into the container and pass `--defaults-extra-file`. The latter is what the
+  clients themselves recommend and it survives `import`'s stdin pipe, which `MYSQL_PWD` also does.
+
+**L2. Unreachable code at the end of `magepack.cmd`** — `commands/magento2/magepack.cmd`
+
+- *What:* An unconditional `exit 1` sits above the final
+  `roll env exec magepack generate …` line, so that line can never run. ShellCheck flags it as
+  SC2317, but SC2317 is disabled repo-wide in `.shellcheckrc`, so the gate no longer surfaces it.
+- *Why it matters:* Either the `exit 1` is wrong and `magepack generate` is silently dead, or the
+  trailing line is leftover and should go. Both readings are defects, and the lint suppression now
+  hides the evidence.
+- *Suggested fix:* Establish which of the two was intended, delete the other, and drop the
+  `disable=SC2317` line from `.shellcheckrc` so the check protects the file again.
 
 ## Checked, and already covered
 
