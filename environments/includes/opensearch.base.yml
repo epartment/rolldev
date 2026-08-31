@@ -17,6 +17,14 @@ services:
       - DISABLE_SECURITY_PLUGIN=true
     volumes:
       - osdata:/usr/share/opensearch/data
+    healthcheck:
+      ## a bare port probe is not enough here: the container's fixed heap has historically let the
+      ## process look healthy while it is actually dead, so this hits the cluster-health endpoint
+      test: ["CMD", "curl", "-fs", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
 volumes:
   osdata:

@@ -16,3 +16,12 @@ services:
       - XDEBUG_CONNECT_BACK_HOST=${XDEBUG_CONNECT_BACK_HOST:-''}
       - NGINX_PUBLIC=${NGINX_PUBLIC:-/}
       - NGINX_TEMPLATE=${NGINX_TEMPLATE:-application.conf}
+    healthcheck:
+      ## checks nginx itself answers, not that the application returns 200 - a fresh project
+      ## with no code deployed yet legitimately serves 403/404, which must not read as unhealthy;
+      ## only a connection failure or a 5xx (nginx/upstream broken) fails the probe
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost/ | grep -qE '^[234]'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

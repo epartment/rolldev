@@ -4,6 +4,12 @@ services:
     image: ${ROLL_IMAGE_REPOSITORY}/redis:${REDIS_VERSION}
     volumes:
       - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   redis:
