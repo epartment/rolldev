@@ -11,41 +11,108 @@ that only restate the release note above them.
 
 ## Unreleased
 
-The 0.8.0 development work, not yet released. Two behaviour changes need reading before
-upgrading — unpinned service versions now warn (and become an error in 0.9.0), and gum becomes a
-dependency. Both are covered in [RELEASE-NOTES-0.8.0.md](RELEASE-NOTES-0.8.0.md).
+The 0.8.0 development work. Two changes need reading before upgrading — unpinned service versions
+now warn (and become an error in 0.9.0), and gum becomes a dependency. Both are covered in
+[RELEASE-NOTES-0.8.0.md](RELEASE-NOTES-0.8.0.md).
 
-**Fixed**
+### Added
 
-- `magento2` environments no longer come up without Varnish, a search engine or RabbitMQ: the
-  environment-type defaults ran after the schema defaults had already filled those variables in.
-- `roll db` works against MariaDB 11, which ships only `mariadb-dump`/`mariadb`.
-- `roll registry categories` no longer dies on macOS (a bash 4 expansion under bash 3.2).
-- `roll backup --help` and `roll status --help` no longer exit 2 on macOS — bash 3.2 mis-parses a
-  lone apostrophe inside a heredoc nested in `$( )`, which Ubuntu-only CI could not see.
-- `roll db/env/redis/svc/restore/restore-full/duplicate --help` no longer fork until killed.
-- `roll restore` reports "No backups found" instead of dying on an internal error.
-- `roll env describe` back to ~1s from ~9s.
-- `isOnline` no longer always reports offline on Linux, so `roll svc up` refreshes images there.
-- WSL environments get the `.linux.yml` compose fragments.
-- `roll fixowns` / `roll fixperms` accept more than one path.
-- Traefik's docker socket is mounted read-only.
-
-**Added**
-
-- `--format json` on `status`, `env describe`, `registry list` and `env doctor`.
-- `roll env doctor`, `roll has-command`, `roll env up --wait` with service healthchecks.
-- `roll env sh <service> '<command>'`, running through `sh -c` inside the container.
-- `roll config check-pins` / `roll config fix-pins`.
+- `roll env doctor` — seventeen checks over Docker, containers, ports, search engine and disk, with
+  `--format json` and an exit code you can gate on.
+- `--format json` on `roll status`, `roll env describe`, `roll registry list` and `roll env doctor`.
+  No ANSI, no credentials, values escaped.
+- `roll has-command <name>` — exit 0/1, no output, for feature detection in scripts.
+- `roll env up --wait`, backed by new healthchecks for db, redis, elasticsearch, opensearch,
+  rabbitmq, varnish and nginx. The search engines are probed through `/_cluster/health` rather than a
+  port, because those containers can hold a port open while the cluster inside them is dead.
+- `roll env sh <service> '<command>'` — runs through `sh -c` inside the container, so redirects and
+  pipes apply there rather than on the host.
+- `roll config check-pins` and `roll config fix-pins` for the version-pin migration.
+- `roll myloader --normalize-source-ddl` — strips the `ENCRYPTION` table option and remaps
+  `utf8mb4_0900_*` collations so a MySQL 8 dump loads into MariaDB. Without the flag, a failed run
+  now names the cause instead of reporting `Trace/breakpoint trap`.
+- `ROLL_PUBLISH_PORTS=0` runs an environment without publishing host ports, for hosts running many
+  environments at once. `ROLL_BROWSERSYNC=1` publishing ports on php-fpm was a known cause of
+  "port is already allocated" that no `.roll/roll-env.yml` override could fix.
+- `ELASTICSEARCH_JAVA_OPTS` / `OPENSEARCH_JAVA_OPTS` replace the hardcoded 512MB search-engine heap.
+- `ROLL_ENV_INIT_FORCE=1` lets `roll env-init` overwrite an existing `.env.roll` non-interactively.
 - `copyfromcontainer`, `copytocontainer`, `magento2/theme` and `convert` moved in from the internal
-  command pack, each with its outstanding bug fixed in transit.
-- `utils/interact.sh`, `utils/backup.sh` and `utils/magento2-init.sh` shared libraries.
-- ShellCheck and a smoke suite now run on macOS as well as Ubuntu.
+  command pack, each with its outstanding bug fixed in transit: `copytocontainer --all` was
+  unreachable, theme discovery was relative to the working directory and only ever examined the
+  first theme, and `convert` overwrote `ELASTICSEARCH_VERSION` with a hardcoded value.
+- `roll registry list` now carries real descriptions and categories, from `@description:` and
+  `@category:` headers in the help files.
+- Documentation: [driving RollDev from a script](docs/machine-interface.md), service version pins,
+  unattended operation, and the `doctor` command.
 
-**Known issue**
+### Changed
 
-- A restored Elasticsearch volume comes back unwritable, so the service will not start after
-  `roll restore`. Predates this release; newly visible because `env up --wait` now catches it.
+- **Unpinned service versions now warn**, and will be an error in 0.9.0. The fallback is the version
+  the project was already running, so nothing changes behaviour today.
+- **gum is a dependency** for interactive prompts. Every prompt is also reachable by flag,
+  environment variable or positional argument, so scripted use works without it, and `roll install`
+  warns rather than failing when it is missing.
+- Every prompt now resolves flag/env first, uses gum only on a terminal, and otherwise fails naming
+  the flag that would have answered it — an unattended run can no longer hang on a prompt.
+- `roll env-init` validates the environment name against Compose's project-name rules at creation,
+  instead of letting it fail later.
+- `roll tableplus` is now a RollDev command in its own right, with Setapp-aware discovery and a
+  clear message on Linux rather than an obscure failure.
+- `dialog` is no longer used anywhere.
+
+### Fixed
+
+- **`magento2` environments came up without Varnish, a search engine or RabbitMQ** unless the
+  toggles were spelled out. The environment-type defaults ran after the schema defaults had already
+  filled those variables in, so every `${VAR:-1}` deriving them was unreachable.
+- `roll db` works against MariaDB 11, which ships only `mariadb-dump`/`mariadb`.
+- `roll registry categories` no longer dies on macOS — bash 4 syntax under a bash 3.2 shell.
+- `roll backup --help` and `roll status --help` no longer exit 2 on macOS. bash 3.2 mis-parses a lone
+  apostrophe inside a heredoc nested in `$( )`; Ubuntu-only CI could not see it.
+- `roll db/env/redis/svc/restore/restore-full/duplicate --help` no longer fork until killed. Those
+  commands take arbitrary flags, so roll hands `--help` to them directly, and each re-invoked itself.
+- `roll redis --help` was unreachable rather than recursive, and now renders.
+- `roll restore` with no backups reports it instead of dying on an internal error.
+- `roll env up` no longer does a redundant compose pass every time: the network-existence check was
+  single-quoted, so the command substitution inside it never ran and the filter never matched.
+- `roll env describe` back to ~1s from ~9s, and it no longer builds container names by string
+  concatenation, which broke whenever Compose named them differently. Same fix in `roll vnc`.
+- `roll fixowns` and `roll fixperms` accept more than one path.
+- `isOnline` no longer always reports offline on Linux — `ping -t` is a timeout on BSD and a TTL on
+  GNU — so `roll svc up` refreshes images there.
+- WSL environments get the `.linux.yml` compose fragments.
+- The Portainer and Startpage service defaults are read from configuration rather than from literals
+  that disagreed with the schema.
+- An unsupported Linux distribution now warns with the CA path instead of silently skipping the
+  trust-store step during `roll install`.
+- `roll env-init x vuejs` produces a valid project; the `vuejs` and `local` types had no `init.env`.
+
+### Security
+
+- The TablePlus connection URI, which carries the database password, is no longer passed as a
+  process argument where anything able to read `ps` could see it.
+- The ssh-agent socket is `chmod 600` and owned by `www-data`, rather than `chmod 777`, and the
+  fixup only runs when there is an agent socket to fix.
+- Traefik's docker socket is mounted read-only.
+- Six `eval "$(cat ~/.roll/.env …)"` sites are replaced with schema-validated config loading.
+- `--format json` output carries no credentials, and values are escaped rather than concatenated.
+
+### Internal
+
+- ShellCheck runs on macOS as well as Ubuntu, over `commands/**` and the help files, and passes.
+- A smoke suite runs on both platforms: the Docker-free command set, a prompt-contract harness, and
+  a parse check that catches the bash 3.2 heredoc trap and any command re-invoking its own help.
+- New shared libraries: `utils/interact.sh` (prompts and styled output), `utils/backup.sh` (the
+  backup/restore/duplicate primitives, replacing eleven byte-identical copies) and
+  `utils/magento2-init.sh` (re-runnable install phases). `restore-full` becomes
+  `restore --include-source`; those two files drop from 2 087 lines to 625.
+
+### Known issue
+
+- A restored Elasticsearch volume comes back unwritable — the volume root is owned by uid 0 while the
+  image runs as uid 1000 — so the service will not start after `roll restore`. The database restores
+  correctly. This predates the release; it is newly visible because `env up --wait` and the
+  healthchecks now catch it, where `env up` previously returned success.
 
 ## [0.7.2](https://github.com/epartment/rolldev/releases/tag/0.7.2) — 2026-08-31
 
