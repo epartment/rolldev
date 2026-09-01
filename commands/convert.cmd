@@ -29,10 +29,22 @@ info "Converting Warden environment variables to RollDev..."
 ## ELASTICSEARCH_VERSION, which used to be overwritten with a hardcoded, outdated version here.
 sed_inplace "s/WARDEN/ROLL/g" "${CURRENT_DIR}/.env"
 
-if grep -q 'ROLL_NO_STATIC_CACHING' "${CURRENT_DIR}/.env"; then
-  sed_inplace "s/.*ROLL_NO_STATIC_CACHING.*$/ROLL_NO_STATIC_CACHING=1/g" "${CURRENT_DIR}/.env"
-else
-  echo "ROLL_NO_STATIC_CACHING=1" >> "${CURRENT_DIR}/.env"
+## NO_STATIC_CACHING is a negative-form key roll never supported - it is in no schema, so it only
+## ever produced an unknown-key warning. Its supported equivalent is ROLL_MAGENTO_STATIC_CACHING,
+## which is positive-form (1 selects the production nginx template), so the value has to be
+## INVERTED rather than renamed. Nothing is written when the legacy key is absent: the schema
+## default of 0 already gives the dev template such a project has been running all along.
+if grep -q '^[[:space:]]*ROLL_NO_STATIC_CACHING=' "${CURRENT_DIR}/.env"; then
+  LEGACY_NO_STATIC_CACHING="$(sed -n 's/^[[:space:]]*ROLL_NO_STATIC_CACHING=//p' "${CURRENT_DIR}/.env" | tail -n 1)"
+  LEGACY_NO_STATIC_CACHING="${LEGACY_NO_STATIC_CACHING//[[:space:]]/}"
+  if [[ "${LEGACY_NO_STATIC_CACHING}" == "1" ]]; then
+    MAGENTO_STATIC_CACHING=0
+  else
+    MAGENTO_STATIC_CACHING=1
+  fi
+  sed_inplace "/^[[:space:]]*ROLL_NO_STATIC_CACHING=/d" "${CURRENT_DIR}/.env"
+  echo "ROLL_MAGENTO_STATIC_CACHING=${MAGENTO_STATIC_CACHING}" >> "${CURRENT_DIR}/.env"
+  info "Translated ROLL_NO_STATIC_CACHING=${LEGACY_NO_STATIC_CACHING} to ROLL_MAGENTO_STATIC_CACHING=${MAGENTO_STATIC_CACHING}."
 fi
 
 if [[ -d "${CURRENT_DIR}/.warden" ]]; then

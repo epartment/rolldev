@@ -266,13 +266,16 @@ function checkSearchEngine() {
 
     recordCheck "search-engine:${engine}" 1 "${engineLabel} cluster health is ${status} at ${baseUrl}."
 
-    local probeIndex="roll-doctor-probe"
+    ## The index name carries this invocation's PID so a leftover from an interrupted run cannot
+    ## make the PUT fail as resource_already_exists, and so the cleanup below only ever removes an
+    ## index this invocation created - the DELETE is skipped entirely when the PUT did not succeed.
+    local probeIndex="roll-doctor-probe-$$"
     local writeCode=""
     writeCode="$(curl -sk -m 5 -o /dev/null -w '%{http_code}' -X PUT "${baseUrl}/${probeIndex}" \
         -H 'Content-Type: application/json' -d '{}' 2>/dev/null)" || true
-    curl -sk -m 5 -o /dev/null -X DELETE "${baseUrl}/${probeIndex}" 2>/dev/null || true
 
     if [[ "${writeCode}" == "200" || "${writeCode}" == "201" ]]; then
+        curl -sk -m 5 -o /dev/null -X DELETE "${baseUrl}/${probeIndex}" 2>/dev/null || true
         recordCheck "search-engine-write:${engine}" 1 "${engineLabel} accepted a throwaway index write at ${baseUrl}/${probeIndex}."
     else
         recordCheck "search-engine-write:${engine}" 0 "${engineLabel} rejected a throwaway index write at ${baseUrl}/${probeIndex} (HTTP ${writeCode:-no response})."

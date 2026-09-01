@@ -122,7 +122,8 @@ case "${ROLL_PARAMS[0]}" in
         while [[ $i -lt ${#ROLL_CONFIG_SCHEMA_KEYS[@]} ]]; do
             key="${ROLL_CONFIG_SCHEMA_KEYS[$i]}"
             value="${ROLL_CONFIG_SCHEMA_VALUES[$i]}"
-            if [[ "$key" =~ ^(PHP_|COMPOSER_|NODE_) ]] || [[ "$key" =~ ^XDEBUG ]]; then
+            if [[ "$key" =~ ^(PHP_|COMPOSER_|NODE_) ]] || [[ "$key" =~ ^XDEBUG ]] \
+                || [[ "$key" =~ ^ROLL_(NODE_PACKAGE_MANAGER|YARN_INSTEAD_OF_GULP)$ ]]; then
                 printf "  %-30s %s\n" "$key" "$value"
             fi
             i=$((i + 1))
@@ -263,7 +264,7 @@ case "${ROLL_PARAMS[0]}" in
             i=0
             while [[ $i -lt ${#ROLL_MISSING_PINS[@]} ]]; do
                 key="${ROLL_MISSING_PINS[$i]}"
-                echo "    ${key}=$(getLegacyDefaultVersion "${key}")"
+                echo "    ${key}=$(getRunningVersion "${key}")"
                 i=$((i + 1))
             done
             info "Run \`roll config fix-pins\` to write these into .env.roll."
@@ -277,7 +278,7 @@ case "${ROLL_PARAMS[0]}" in
         i=0
         while [[ $i -lt ${#ROLL_MISSING_PINS[@]} ]]; do
             key="${ROLL_MISSING_PINS[$i]}"
-            value="$(getLegacyDefaultVersion "${key}")"
+            value="$(getRunningVersion "${key}")"
             echo "${key}=${value}" >> "${config_file}"
             success "Pinned ${key}=${value}"
             i=$((i + 1))

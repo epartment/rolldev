@@ -201,7 +201,9 @@ literal default value. Loading proceeds in this order (`loadRollConfig`, `utils/
 6. `setConfigDefault` fills in every schema key that still has no value and carries a literal
    default.
 7. `applyVersionPinFallbacks` warns about every enabled service with no version pin and falls back
-   to the version the project was already running.
+   to the version the project was already running. "No pin" is judged on the keys step 2 read out of
+   the project's own `.env.roll`, not on the resolved value — a version coming from global config
+   resolves but pins nothing, since it is absent from the repository a colleague clones.
 8. `postProcessConfig` derives image variants (`ROLL_SVC_PHP_VARIANT`, `ROLL_SVC_PHP_NODE`), the
    Xdebug tag, and the nginx template name.
 
@@ -608,9 +610,11 @@ rather than defects, and of the [boundary findings](#boundary-findings) above.
 
 ### Medium
 
-
+None open.
 
 ### Low
+
+None open.
 
 ## Audited and clean
 

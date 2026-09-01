@@ -67,6 +67,21 @@ on:
 
 Turning a service off removes its pin requirement.
 
+## Global config does not count as a pin
+
+A version set in `~/.roll/.env` or `~/.roll/.env.roll` is loaded before your project's `.env.roll`,
+so it resolves — but it pins nothing. It lives on your machine, not in the repository, so a
+colleague who does not have that line gets a different image from the same branch, which is exactly
+what pinning exists to prevent. `check-pins` therefore still reports such a version as missing.
+
+`fix-pins` writes the value you are inheriting, not RollDev's built-in default, so pinning it does
+not change the image your environment comes up with:
+
+```bash
+# ~/.roll/.env carries PHP_VERSION=8.3, the project pins nothing
+roll config fix-pins     # writes PHP_VERSION=8.3 into .env.roll
+```
+
 ## New projects
 
 `roll env-init` seeds `.env.roll` from the environment type's `init.env`, which pins everything that

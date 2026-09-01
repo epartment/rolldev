@@ -57,13 +57,14 @@ case "$1" in
   --realpath)
     REALPATH_FILE="${2:-}"
     [[ -z "${REALPATH_FILE}" ]] && fatal "roll copyfromcontainer --realpath requires a file path."
+    ## REALPATH_FILE is a path inside the container, so it must not be tested against the host
+    ## filesystem: for the normal case (a file that only exists in the container) every host test
+    ## fails, and mirroring the container path under tmp/ would need a parent directory that was
+    ## never created. Everything lands flat in the project tmp folder, whose only guaranteed
+    ## parent is tmp/ itself - matching how --cachegrind and --traces already work.
     mkdir -p "${ROLL_ENV_PATH}/tmp"
-    if [[ -f "${REALPATH_FILE}" ]]; then
-      docker cp "$(roll env ps -q php-fpm)":"${REALPATH_FILE}" "${ROLL_ENV_PATH}/tmp/${REALPATH_FILE}"
-    else
-      docker cp "$(roll env ps -q php-fpm)":"${REALPATH_FILE}" "${ROLL_ENV_PATH}/tmp/$(dirname -- "${REALPATH_FILE}")"
-    fi
-    success "Completed copying ${REALPATH_FILE} from container to host tmp folder: ${ROLL_ENV_PATH}/tmp/${REALPATH_FILE}"
+    docker cp "$(roll env ps -q php-fpm)":"${REALPATH_FILE}" "${ROLL_ENV_PATH}/tmp/"
+    success "Completed copying ${REALPATH_FILE} from container to host tmp folder: ${ROLL_ENV_PATH}/tmp/$(basename -- "${REALPATH_FILE}")"
     ;;
   *)
     if (( ${#ROLL_PARAMS[@]} == 0 )) || [[ "${ROLL_PARAMS[0]}" == "help" ]]; then

@@ -7,7 +7,7 @@ on:
       - 'commands/**/*.help'
       - 'utils/*.sh'
       - 'environments/**'
-      - '.github/scripts/smoke.sh'
+      - '.github/scripts/**'
       - '.shellcheckrc'
       - '.github/workflows/shellcheck.yml'
   pull_request:
@@ -17,7 +17,7 @@ on:
       - 'commands/**/*.help'
       - 'utils/*.sh'
       - 'environments/**'
-      - '.github/scripts/smoke.sh'
+      - '.github/scripts/**'
       - '.shellcheckrc'
       - '.github/workflows/shellcheck.yml'
   workflow_dispatch:
@@ -42,7 +42,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: Run shellcheck
-        run: shellcheck commands/*.cmd commands/*/*.cmd commands/*.help commands/*/*.help utils/*.sh .github/scripts/smoke.sh
+        run: shellcheck commands/*.cmd commands/*/*.cmd commands/*.help commands/*/*.help utils/*.sh .github/scripts/*.sh
 
       # bin/roll requires a `docker` CLI on PATH (it runs `docker compose version` before
       # dispatching to any subcommand, including Docker-free ones) but none of the smoke commands

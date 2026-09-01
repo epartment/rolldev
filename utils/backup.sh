@@ -515,11 +515,19 @@ function performLegacyMigration() {
                 fi
             fi
             
-            # Ensure ROLL_NO_STATIC_CACHING is set
-            if [[ -n "$(grep -r 'ROLL_NO_STATIC_CACHING' "$current_dir/.env")" ]]; then
-                perl -i -pe's/.*ROLL_NO_STATIC_CACHING.*$/ROLL_NO_STATIC_CACHING\=1/g' "$current_dir/.env"
-            else
-                echo "ROLL_NO_STATIC_CACHING=1" >> "$current_dir/.env"
+            # Translate the legacy negative-form key to the supported positive-form one, inverting
+            # the value: ROLL_NO_STATIC_CACHING is in no schema, while ROLL_MAGENTO_STATIC_CACHING=1
+            # selects the production nginx template. Absent means schema default 0, so write nothing.
+            if grep -q '^[[:space:]]*ROLL_NO_STATIC_CACHING=' "$current_dir/.env"; then
+                local legacy_no_static_caching=""
+                legacy_no_static_caching="$(sed -n 's/^[[:space:]]*ROLL_NO_STATIC_CACHING=//p' "$current_dir/.env" | tail -n 1)"
+                legacy_no_static_caching="${legacy_no_static_caching//[[:space:]]/}"
+                local magento_static_caching=1
+                if [[ "$legacy_no_static_caching" == "1" ]]; then
+                    magento_static_caching=0
+                fi
+                sed -i.legacy '/^[[:space:]]*ROLL_NO_STATIC_CACHING=/d' "$current_dir/.env"
+                echo "ROLL_MAGENTO_STATIC_CACHING=${magento_static_caching}" >> "$current_dir/.env"
             fi
             
             # Move to .env.roll if it contains ROLL_ variables

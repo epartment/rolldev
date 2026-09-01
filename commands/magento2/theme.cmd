@@ -24,19 +24,26 @@ INSTALL_THEMES=($(find "${THEME_ROOT}" -maxdepth 3 -name 'package.json' 2>/dev/n
 AVAILABLE_THEMES=($(find "${THEME_ROOT}" -name 'Gulpfile.js' 2>/dev/null \
     | sed -e 's#/Gulpfile\.js$##' -e "s#^${THEME_ROOT}/##"))
 
-## boilerplate detection must inspect every discovered theme, not just the first one - grepping
-## "${AVAILABLE_THEMES[@]}" without printf'ing each element on its own line yields only element 0
-BOILERPLATE_THEME=()
-if (( ${#AVAILABLE_THEMES[@]} > 0 )); then
-    BOILERPLATE_THEME=($(printf '%s\n' "${AVAILABLE_THEMES[@]}" | grep -e 'Epartment/boilerplate'))
-fi
-
 NODE_PACKAGE_MANAGER=${ROLL_NODE_PACKAGE_MANAGER:-yarn}
-if (( ${#BOILERPLATE_THEME[@]} > 0 )); then
-    YARN_INSTEAD_OF_GULP=1
-else
-    YARN_INSTEAD_OF_GULP=${ROLL_YARN_INSTEAD_OF_GULP:-0}
-fi
+
+## Which build a theme uses is a property of that theme, not of the project: a project can hold a
+## boilerplate theme with Yarn scripts alongside older Gulpfile-only themes, and one global flag
+## would send `yarn run dev` at themes that only have a Gulp build. ROLL_YARN_INSTEAD_OF_GULP
+## remains a project-wide override, in both directions, when it is set at all.
+function usesYarnBuild() {
+    local theme="$1"
+
+    if [[ -n "${ROLL_YARN_INSTEAD_OF_GULP:-}" ]]; then
+        [[ "${ROLL_YARN_INSTEAD_OF_GULP}" == "1" ]] && return 0
+        return 1
+    fi
+
+    case "${theme}" in
+        *Epartment/boilerplate*) return 0 ;;
+    esac
+
+    return 1
+}
 
 function installTheme() {
     THEME_DIR="/var/www/html/app/design/frontend/${SELECTED_THEME}"
@@ -49,7 +56,7 @@ function installTheme() {
 function buildTheme() {
     THEME_DIR="/var/www/html/app/design/frontend/${SELECTED_THEME}"
 
-    if [[ ${YARN_INSTEAD_OF_GULP} == 1 ]]; then
+    if usesYarnBuild "${SELECTED_THEME}"; then
         "${ROLL_DIR}/bin/roll" env exec -T -u www-data --workdir "${THEME_DIR}" "${ROLL_ENV_SHELL_CONTAINER}" yarn run dev
     else
         "${ROLL_DIR}/bin/roll" env exec -T -u www-data --workdir "${THEME_DIR}" "${ROLL_ENV_SHELL_CONTAINER}" gulp build
@@ -59,7 +66,7 @@ function buildTheme() {
 function watchTheme() {
     THEME_DIR="/var/www/html/app/design/frontend/${SELECTED_THEME}"
 
-    if [[ ${YARN_INSTEAD_OF_GULP} == 1 ]]; then
+    if usesYarnBuild "${SELECTED_THEME}"; then
         "${ROLL_DIR}/bin/roll" env exec -u www-data --workdir "${THEME_DIR}" "${ROLL_ENV_SHELL_CONTAINER}" yarn run watch
     else
         "${ROLL_DIR}/bin/roll" env exec -u www-data --workdir "${THEME_DIR}" "${ROLL_ENV_SHELL_CONTAINER}" gulp watch

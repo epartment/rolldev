@@ -28,11 +28,15 @@ case "$1" in
       source "${ROLL_DIR}/commands/usage.cmd"
     fi
     FILE_OR_FOLDER="${ROLL_PARAMS[0]}"
-    if [[ -f "${FILE_OR_FOLDER}" ]]; then
-      docker cp "${ROLL_ENV_PATH}/${FILE_OR_FOLDER}" "$(roll env ps -q php-fpm)":/var/www/html/"${FILE_OR_FOLDER}"
-    else
-      docker cp "${ROLL_ENV_PATH}/$(dirname -- "${FILE_OR_FOLDER}")" "$(roll env ps -q php-fpm)":/var/www/html/"${FILE_OR_FOLDER}"
-    fi
+    ## dirname belongs on the DESTINATION, not on the source: `docker cp <src> <dst>/` places <src>
+    ## inside <dst>, so naming the source's parent as the source copied the entire project root
+    ## into /var/www/html/<folder>. One expression covers both a file and a directory. The
+    ## destination parent has to exist inside the container - docker cp does not create it - which
+    ## it need not for a path the container has never seen.
+    CONTAINER_ID="$(roll env ps -q php-fpm)"
+    DEST_PARENT="/var/www/html/$(dirname -- "${FILE_OR_FOLDER}")"
+    docker exec "${CONTAINER_ID}" mkdir -p -- "${DEST_PARENT}"
+    docker cp "${ROLL_ENV_PATH}/${FILE_OR_FOLDER}" "${CONTAINER_ID}":"${DEST_PARENT}"/
     success "Completed copying ${FILE_OR_FOLDER} from host to container."
     "${ROLL_DIR}/bin/roll" fixowns "${FILE_OR_FOLDER}"
     "${ROLL_DIR}/bin/roll" fixperms "${FILE_OR_FOLDER}"

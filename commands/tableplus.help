@@ -5,7 +5,7 @@
 
 ROLL_USAGE=$(cat <<EOF
 \033[33mUsage:\033[0m
-  tableplus                 Open the current project database in TablePlus (macOS only)                     Launches tableplus with current database
+  tableplus         Open the current project database in TablePlus (macOS only)
 \033[33mOptions:\033[0m
   -h, --help        Display this help menu
 EOF

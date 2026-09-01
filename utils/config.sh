@@ -14,6 +14,13 @@ ROLL_CONFIG_LOADED_FILES=()
 ROLL_CONFIG_SCHEMA_KEYS=()
 ROLL_CONFIG_SCHEMA_VALUES=()
 
+# Which config file each key came from. Global config (~/.roll/.env{,.roll}) is loaded into the same
+# cache as the project's .env.roll, so the resolved value alone cannot answer "did THIS project pin
+# this?" - the version-pin checks below need the origin, not the value.
+ROLL_GLOBAL_CONFIG_KEYS=()
+ROLL_GLOBAL_CONFIG_VALUES=()
+ROLL_PROJECT_CONFIG_KEYS=()
+
 ## Helper function to find index of key in array
 function findConfigIndex() {
     local key="$1"
@@ -122,6 +129,10 @@ function initConfigSchema() {
     
     # Node configuration
     ROLL_CONFIG_SCHEMA_KEYS+=(NODE_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    # Both are read by `roll theme`. Optional rather than defaulted on purpose: an unset
+    # ROLL_YARN_INSTEAD_OF_GULP means "decide per theme", which a 0/1 default would destroy.
+    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_NODE_PACKAGE_MANAGER); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_YARN_INSTEAD_OF_GULP); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     
     # Nginx configuration
     ROLL_CONFIG_SCHEMA_KEYS+=(NGINX_TEMPLATE); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
@@ -241,6 +252,7 @@ function setConfigDefault() {
 function loadConfigFromFile() {
     local config_file="$1"
     local validate_only="${2:-false}"
+    local source_label="${3:-}"
     
     if [[ ! -f "$config_file" ]]; then
         error "Configuration file not found: $config_file"
@@ -293,6 +305,16 @@ function loadConfigFromFile() {
                     ROLL_CONFIG_CACHE_VALUES+=("$value")
                 fi
                 export "$key"="$value"
+
+                case "$source_label" in
+                    global)
+                        ROLL_GLOBAL_CONFIG_KEYS+=("$key")
+                        ROLL_GLOBAL_CONFIG_VALUES+=("$value")
+                        ;;
+                    project)
+                        ROLL_PROJECT_CONFIG_KEYS+=("$key")
+                        ;;
+                esac
             fi
             
         elif [[ "$line" =~ ^[[:space:]]*[^=]+$ ]]; then
@@ -329,12 +351,16 @@ function loadRollConfig() {
     # Initialize schema if not done
     initConfigSchema
     
+    ROLL_GLOBAL_CONFIG_KEYS=()
+    ROLL_GLOBAL_CONFIG_VALUES=()
+    ROLL_PROJECT_CONFIG_KEYS=()
+    
     # Load global configuration first from ROLL_HOME_DIR
     local global_config_loaded=0
     
     # Check for new-style global config file
     if [[ -f "${ROLL_HOME_DIR}/.env.roll" ]]; then
-        if loadConfigFromFile "${ROLL_HOME_DIR}/.env.roll"; then
+        if loadConfigFromFile "${ROLL_HOME_DIR}/.env.roll" "false" "global"; then
             global_config_loaded=1
         else
             warning "Failed to load global configuration from ${ROLL_HOME_DIR}/.env.roll"
@@ -343,7 +369,7 @@ function loadRollConfig() {
     
     # Check for legacy global config file
     if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
-        if loadConfigFromFile "${ROLL_HOME_DIR}/.env"; then
+        if loadConfigFromFile "${ROLL_HOME_DIR}/.env" "false" "global"; then
             global_config_loaded=1
         else
             warning "Failed to load global configuration from ${ROLL_HOME_DIR}/.env"
@@ -351,7 +377,7 @@ function loadRollConfig() {
     fi
     
     # Load project-specific configuration (this will override global settings)
-    if ! loadConfigFromFile "$config_file"; then
+    if ! loadConfigFromFile "$config_file" "false" "project"; then
         return 1
     fi
     
@@ -500,6 +526,72 @@ function getLegacyDefaultVersion() {
     esac
 }
 
+## The older per-distribution spelling that applyEnvTypeDefaults turns into DB_DISTRIBUTION_VERSION.
+function dbDistributionVersionKey() {
+    if [[ "${DB_DISTRIBUTION}" == "mysql" ]]; then
+        echo "MYSQL_VERSION"
+    else
+        echo "MARIADB_VERSION"
+    fi
+}
+
+## Look up a key's value in the global config files, if it was set there at all.
+function getGlobalConfigValue() {
+    local key="$1"
+    local i=0
+
+    while [[ $i -lt ${#ROLL_GLOBAL_CONFIG_KEYS[@]} ]]; do
+        if [[ "${ROLL_GLOBAL_CONFIG_KEYS[$i]}" == "${key}" ]]; then
+            echo "${ROLL_GLOBAL_CONFIG_VALUES[$i]}"
+            return 0
+        fi
+        i=$((i + 1))
+    done
+
+    echo ""
+    return 0
+}
+
+## The version an unpinned key is running RIGHT NOW, which is what has to be written into
+## .env.roll. A value inherited from global config wins over the legacy literal: pinning the
+## literal instead would change the image a project running on a global override already uses.
+## DB_DISTRIBUTION_VERSION additionally accepts the older per-distribution spellings, because
+## applyEnvTypeDefaults derives it from those and that has not happened yet when pins are collected.
+function getRunningVersion() {
+    local key="$1"
+    local inherited=""
+
+    inherited="$(getGlobalConfigValue "${key}")"
+
+    if [[ -z "${inherited}" && "${key}" == "DB_DISTRIBUTION_VERSION" ]]; then
+        inherited="$(getGlobalConfigValue "$(dbDistributionVersionKey)")"
+    fi
+
+    if [[ -n "${inherited}" ]]; then
+        echo "${inherited}"
+        return 0
+    fi
+
+    getLegacyDefaultVersion "${key}"
+}
+
+## Whether the project's own config file pins this key. DB_DISTRIBUTION_VERSION also counts as
+## pinned when the project uses one of the older per-distribution spellings, which
+## applyEnvTypeDefaults turns into it.
+function isVersionPinned() {
+    local key="$1"
+
+    if containsElement "${key}" "${ROLL_PROJECT_CONFIG_KEYS[@]}"; then
+        return 0
+    fi
+
+    if [[ "${key}" == "DB_DISTRIBUTION_VERSION" ]] && containsElement "$(dbDistributionVersionKey)" "${ROLL_PROJECT_CONFIG_KEYS[@]}"; then
+        return 0
+    fi
+
+    return 1
+}
+
 ## Every enabled service should have its version pinned in .env.roll. Previously an omitted pin
 ## silently resolved to a schema literal, so a project could change PHP or database version just by
 ## upgrading roll.
@@ -510,10 +602,13 @@ function getLegacyDefaultVersion() {
 function collectMissingVersionPins() {
     ROLL_MISSING_PINS=()
 
+    ## A pin is judged on the project's own .env.roll, never on the resolved value: global config is
+    ## loaded into the same cache first, so a version in ~/.roll/.env would report as pinned while
+    ## the project file stays empty and a teammate without that global resolves a different image.
     ## env.cmd never appends the php-fpm partial for the local type, so it needs no PHP or Node
     if [[ "${ROLL_ENV_TYPE}" != "local" ]]; then
-        [[ -z "${PHP_VERSION}" ]] && ROLL_MISSING_PINS+=(PHP_VERSION)
-        [[ -z "${NODE_VERSION}" ]] && ROLL_MISSING_PINS+=(NODE_VERSION)
+        isVersionPinned PHP_VERSION || ROLL_MISSING_PINS+=(PHP_VERSION)
+        isVersionPinned NODE_VERSION || ROLL_MISSING_PINS+=(NODE_VERSION)
     fi
 
     ## toggle:version pairs; the version is required only when its service is switched on
@@ -532,14 +627,13 @@ function collectMissingVersionPins() {
     )
 
     local i=0
-    local toggle="" version_key="" toggle_value="" version_value=""
+    local toggle="" version_key="" toggle_value=""
     while [[ $i -lt ${#requirements[@]} ]]; do
         toggle="${requirements[$i]%%:*}"
         version_key="${requirements[$i]##*:}"
         eval "toggle_value=\${${toggle}:-0}"
-        eval "version_value=\${${version_key}:-}"
 
-        if [[ "${toggle_value}" == "1" && -z "${version_value}" ]]; then
+        if [[ "${toggle_value}" == "1" ]] && ! isVersionPinned "${version_key}"; then
             ROLL_MISSING_PINS+=("${version_key}")
         fi
         i=$((i + 1))
@@ -567,7 +661,7 @@ function applyVersionPinFallbacks() {
     >&2 echo ""
     while [[ $i -lt ${#ROLL_MISSING_PINS[@]} ]]; do
         key="${ROLL_MISSING_PINS[$i]}"
-        value="$(getLegacyDefaultVersion "${key}")"
+        value="$(getRunningVersion "${key}")"
         >&2 echo "    ${key}=${value}"
         setConfigValue "${key}" "${value}"
         i=$((i + 1))
