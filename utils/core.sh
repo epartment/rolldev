@@ -159,3 +159,28 @@ function sed_inplace() {
         rm -f "${file}${backup_ext}"
     fi
 }
+## Hand a database URI to TablePlus without putting it in the process list.
+##
+## The URI carries the database password, and `open "$uri" -a TablePlus` makes it an argument, so
+## anything able to read `ps` can see it for as long as the call lasts - that is finding H2 against
+## the internal command pack, where the URI holds real staging and production credentials.
+##
+## osascript reads its script from stdin, so only "osascript -" appears in the process list.
+## `open location` routes by URL scheme, which is what TablePlus registers itself for.
+function openInTablePlus() {
+  local uri="$1"
+  local escaped
+
+  ## AppleScript string literals take the same escapes as C: backslash first, then quote
+  escaped="${uri//\\/\\\\}"
+  escaped="${escaped//\"/\\\"}"
+
+  if printf 'open location "%s"\n' "${escaped}" | osascript - >/dev/null 2>&1; then
+    return 0
+  fi
+
+  ## Falling back to `open` puts the password in argv, so say so rather than exposing it silently.
+  warning "Could not hand the connection to TablePlus via osascript; falling back to \`open\`,"
+  warning "which briefly exposes the database password in the process list."
+  open "${uri}" -a "${TABLEPLUS_APP:-TablePlus}"
+}
