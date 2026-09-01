@@ -27,6 +27,13 @@ roll config fix-pins      # write them, after taking a backup
 up. Measured across 48 local projects while developing this release, 34 needed at least one pin —
 most commonly `NGINX_VERSION`, which no environment type had ever pinned.
 
+A version set in global config (`~/.roll/.env` or `~/.roll/.env.roll`) resolves, but does **not**
+count as a pin: it lives on your machine rather than in the repository, so a colleague without that
+line still gets a different image from the same branch. Such a version is reported as missing, and
+`fix-pins` writes the value you are inheriting rather than RollDev's built-in default — so pinning it
+does not change what comes up either. If you keep versions in global config, expect `check-pins` to
+have something to say about every project.
+
 ### gum is now a dependency
 
 Every interactive prompt goes through [gum](https://github.com/charmbracelet/gum) (≥ 0.14.0). The
@@ -71,7 +78,10 @@ wait on for them. Recreate an environment once after upgrading.
 - `roll config check-pins` / `roll config fix-pins`.
 - `roll env doctor`, `roll has-command`.
 - `copyfromcontainer`, `copytocontainer`, `magento2/theme` and `convert` move in from the internal
-  command pack, each with its outstanding bug fixed in transit.
+  command pack, each with its outstanding bugs fixed in transit — among them `copytocontainer
+  <folder>` copying the whole project root into the destination, `copyfromcontainer --realpath`
+  building a destination path that could not exist, `theme` forcing one build tool across every
+  theme in the project, and `convert` writing a static-caching key no schema defines.
 
 ## Fixes worth calling out
 
@@ -101,7 +111,8 @@ environment appearing to come up fine. Tracked as H1 in the README.
 
 ## For contributors
 
-- ShellCheck runs on macOS as well as Ubuntu, over `commands/**` and the help files, and it passes.
+- ShellCheck runs on macOS as well as Ubuntu, over `commands/**`, the help files, `utils/` and the
+  CI scripts, and it passes.
 - A smoke suite runs on both platforms: the Docker-free command set, a prompt-contract harness, and
   a parse check that catches the bash 3.2 heredoc trap and any command that re-invokes its own help.
 - `utils/interact.sh`, `utils/backup.sh` and `utils/magento2-init.sh` are new shared libraries.

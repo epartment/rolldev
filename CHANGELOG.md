@@ -37,9 +37,14 @@ now warn (and become an error in 0.9.0), and gum becomes a dependency. Both are 
 - `ELASTICSEARCH_JAVA_OPTS` / `OPENSEARCH_JAVA_OPTS` replace the hardcoded 512MB search-engine heap.
 - `ROLL_ENV_INIT_FORCE=1` lets `roll env-init` overwrite an existing `.env.roll` non-interactively.
 - `copyfromcontainer`, `copytocontainer`, `magento2/theme` and `convert` moved in from the internal
-  command pack, each with its outstanding bug fixed in transit: `copytocontainer --all` was
-  unreachable, theme discovery was relative to the working directory and only ever examined the
-  first theme, and `convert` overwrote `ELASTICSEARCH_VERSION` with a hardcoded value.
+  command pack, each with its outstanding bugs fixed in transit: `copytocontainer --all` was
+  unreachable and `copytocontainer <folder>` copied the whole project root into the destination,
+  `copyfromcontainer --realpath` tested a container path against the host filesystem and built a
+  destination whose parent never existed, theme discovery was relative to the working directory and
+  only ever examined the first theme, the Gulp-or-Yarn choice is now made per theme so mixed
+  projects build correctly, and `convert` overwrote `ELASTICSEARCH_VERSION` with a hardcoded value
+  and wrote a `ROLL_NO_STATIC_CACHING` key no schema defines — it now translates that legacy
+  negative-form value into `ROLL_MAGENTO_STATIC_CACHING`.
 - `roll registry list` now carries real descriptions and categories, from `@description:` and
   `@category:` headers in the help files.
 - Documentation: [driving RollDev from a script](docs/machine-interface.md), service version pins,
@@ -48,7 +53,10 @@ now warn (and become an error in 0.9.0), and gum becomes a dependency. Both are 
 ### Changed
 
 - **Unpinned service versions now warn**, and will be an error in 0.9.0. The fallback is the version
-  the project was already running, so nothing changes behaviour today.
+  the project was already running, so nothing changes behaviour today. A version set in global config
+  (`~/.roll/.env`) counts as unpinned: it is not in the repository, so a colleague without that line
+  still resolves a different image. `fix-pins` writes the inherited value in that case, not
+  RollDev's built-in default.
 - **gum is a dependency** for interactive prompts. Every prompt is also reachable by flag,
   environment variable or positional argument, so scripted use works without it, and `roll install`
   warns rather than failing when it is missing.
@@ -99,13 +107,15 @@ now warn (and become an error in 0.9.0), and gum becomes a dependency. Both are 
 
 ### Internal
 
-- ShellCheck runs on macOS as well as Ubuntu, over `commands/**` and the help files, and passes.
+- ShellCheck runs on macOS as well as Ubuntu, over `commands/**`, the help files, `utils/` and the
+  CI scripts, and passes.
 - A smoke suite runs on both platforms: the Docker-free command set, a prompt-contract harness, and
   a parse check that catches the bash 3.2 heredoc trap and any command re-invoking its own help.
 - New shared libraries: `utils/interact.sh` (prompts and styled output), `utils/backup.sh` (the
   backup/restore/duplicate primitives, replacing eleven byte-identical copies) and
-  `utils/magento2-init.sh` (re-runnable install phases). `restore-full` becomes
-  `restore --include-source`; those two files drop from 2 087 lines to 625.
+  `utils/magento2-init.sh` (re-runnable install phases). `restore-full` is now `restore
+  --include-source` with the old name kept as an alias, so existing scripts keep working; those two
+  files drop from 2 087 lines to 625.
 
 ### Known issue
 
