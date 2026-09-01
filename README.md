@@ -31,6 +31,8 @@ on unattended Linux hosts alike.
 - [Audited and clean](#audited-and-clean)
 - [Troubleshooting](#troubleshooting)
 
+Release history is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Stack
 
 | Concern | Choice | Notes |
