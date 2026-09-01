@@ -305,7 +305,7 @@ part. These are the couplings that are not visible from it:
 | `commands/status.cmd:6` | `docker/docker-compose.yml` | The shared network name is recovered by `grep -A3 'networks:' … \| tail -n1 \| sed`, i.e. by text-parsing YAML | Reordering keys in `docker-compose.yml` breaks `roll status`'s "is RollDev running" check |
 | `environments/includes/redis.base.yml` | `environments/includes/dragonfly.base.yml` | Both define a service literally named `redis`; Dragonfly only swaps the image and volume | Correct as written — it is what lets `roll redis` work either way — but it forces the mutual-exclusion guard at `commands/env.cmd:12-14` |
 | `commands/env.cmd:116-120` | `commands/browsersync.cmd` | `env up` shells back out to `roll browsersync freeport` to pick host ports before assembling the compose args | A circular dependency between two commands, evaluated on every `up` with browsersync enabled |
-| `docs/index.md:7` | `README.md` | Sphinx `include` with `end-before: <!-- include_open_stop -->` | The marker was missing before this revision, so the docs home page inlined the entire README (**M5**) |
+| `docs/index.md:7` | `README.md` | Sphinx `include` with `end-before: <!-- include_open_stop -->` | Keep the marker: anything below it is contributor-facing and stays off the published site |
 
 Two couplings that look wrong but are not: `commands/*.cmd` wrappers re-invoking `${ROLL_DIR}/bin/roll`
 as a subprocess is a deliberate choice (a sourced command cannot cleanly re-enter dispatch), and the
@@ -314,33 +314,9 @@ Compose projects cannot declare each other's networks.
 
 ### Boundary findings
 
-#### High
-
-None. No component in this repository has an unclear owner or a circular library dependency; the
-boundary problems below all cost maintenance time rather than correctness.
-
-#### Medium
-
-**MB1. The backup/restore/duplicate family has no shared library** — `commands/backup.cmd`,
-`commands/restore.cmd`, `commands/restore-full.cmd`, `commands/duplicate.cmd`
-
-- *What:* Four command files totalling 3 929 lines — 57 % of all top-level command code — with no
-  extracted helpers. `restore.cmd` and `restore-full.cmd` differ in only 339 of ~2 123 lines
-  (measured with `diff` after trimming trailing whitespace); 17 of their 19 function names are
-  identical. `promptPassword`, `showProgress` and `logMessage` exist in all four; `promptPassword` is
-  byte-identical between `restore.cmd` and `restore-full.cmd` and differs slightly in the other two.
-- *Why it matters:* Every fix has to be applied up to four times, and the three near-copies of
-  `promptPassword` prove that it is not being done. The archive layout contract lives only in prose
-  comments, so a change to the staging path in one file leaves the others looking for backups
-  elsewhere — a failure mode the comment at `commands/backup.cmd:22-35` already warns about.
-- *Suggested fix:* Extract a `utils/backup.sh` sourced by all four, holding the shared primitives
-  (`promptPassword`, `showProgress`, `logMessage`, `logVerbose`, `detectEncryptedBackup`,
-  `findLatestBackup`, `extractBackupArchive`, `validateBackup`, `getBackupMetadata`,
-  `getVolumeMapping`, `restoreVolume`) plus one function that resolves the staging directory, so the
-  path contract has exactly one definition. Then collapse `restore-full.cmd` into `restore.cmd`
-  behind a `--include-source` flag mirroring `backup.cmd`'s existing `--include-source`, and keep
-  `restore-full` as a two-line alias for backwards compatibility. `utils/` is already sourced from
-  `bin/roll`, so a fifth library needs one line there.
+None open. No component has an unclear owner or a circular library dependency. The two that did cost
+maintenance time are resolved: the backup family now shares `utils/backup.sh`, and `magento2-init`
+is split into re-runnable phases in `utils/magento2-init.sh`.
 
 ## Environments
 
@@ -359,8 +335,8 @@ boundary problems below all cost maintenance time rather than correctness.
 | `typo3` | yes | **no** | PHP 7.4, Node 12, MariaDB 10.4 |
 | `wordpress` | yes | **no** | PHP 7.4, Composer 1, seeds `DB_*`; PHP image variant is `php-fpm-wordpress` |
 | `php` | yes | **no** | PHP 8.1, `ROLL_DB=0` |
-| `vuejs` | **no** | **no** | Routes `app.` to nginx and `watch.app.` to port 8080 on `php-fpm` |
-| `local` | **no** | **no** | Network-only environment; bring your own `.roll/roll-env.yml` |
+| `vuejs` | yes | **no** | PHP 8.1, Node 18, MariaDB 10.4; routes `app.` to nginx and `watch.app.` to port 8080 on `php-fpm` |
+| `local` | yes | **no** | Network-only; bring your own `.roll/roll-env.yml`. Pins only what its default toggles enable |
 
 Without a Mutagen configuration, macOS falls back to the bind mount from
 `environments/includes/php-fpm.base.yml` (`.:/var/www/html:cached`), which works but is markedly
@@ -630,21 +606,7 @@ rather than defects, and of the [boundary findings](#boundary-findings) above.
 
 ### Medium
 
-**M4. `restore.cmd` and `restore-full.cmd` are near-identical copies** — see boundary finding
-[**MB1**](#boundary-findings) for the measurement and the suggested split.
 
-**M5. The published documentation home page inlines the whole README** — `docs/index.md:7`
-
-- *What:* `docs/index.md` includes `../README.md` with `end-before: <!-- include_open_stop -->`.
-  **Verified:** before this revision no such marker existed anywhere in the repository, so MyST had
-  nothing to stop at and the entire README — installation instructions, command list, licence, links —
-  was rendered above the docs home page's own "Features" section and table of contents. This revision
-  adds the marker after the opening paragraph.
-- *Why it matters:* The docs home page duplicated the README's installation section immediately above
-  its own link to `installing`, and any README growth landed on the published site unreviewed.
-- *Suggested fix:* Already addressed by the marker. Keep it: anything below
-  `<!-- include_open_stop -->` in this file is repository-facing and does not appear on the site. If
-  the include ever needs to cover more, move the marker rather than removing it.
 
 ### Low
 
