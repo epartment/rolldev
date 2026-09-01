@@ -88,6 +88,19 @@ There is no unit-test suite. What is available:
 
   It passes on a clean checkout, so **any** finding your change produces is yours to fix. `bin/roll`
   itself is not in the gate.
+
+  **A clean local run is not proof the gate is green.** The Ubuntu runner installs ShellCheck from
+  apt (0.9.0 on 24.04) while Homebrew ships 0.11.0, and the older version raises findings the newer
+  one dropped — SC2002, SC2015 and SC2236 among them — so the macOS leg can pass while Ubuntu fails
+  on code neither of you changed. When in doubt, reproduce the Ubuntu leg in a container:
+
+  ```bash
+  docker run --rm -v "$PWD":/src:ro ubuntu:24.04 bash -c 'apt-get update -qq && apt-get install -y -qq shellcheck gettext-base docker.io docker-compose-v2 && cp -r /src /repo && cd /repo && shellcheck commands/*.cmd commands/*/*.cmd commands/*.help commands/*/*.help utils/*.sh .github/scripts/*.sh && .github/scripts/smoke.sh native'
+  ```
+
+  That also exercises bash 5, which differs from macOS's 3.2 in the other direction: bash 4.4 and
+  later apply `set -u` inside arithmetic contexts, so `((x < 1))` on an unset `x` aborts there while
+  3.2 substitutes 0.
 - **The smoke suite**, which CI runs on both platforms and which needs no Docker daemon and no
   project checkout:
 

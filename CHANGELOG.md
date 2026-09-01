@@ -94,6 +94,10 @@ now warn (and become an error in 0.9.0), and gum becomes a dependency. Both are 
 - An unsupported Linux distribution now warns with the CA path instead of silently skipping the
   trust-store step during `roll install`.
 - `roll env-init x vuejs` produces a valid project; the `vuejs` and `local` types had no `init.env`.
+- `box` no longer aborts under `set -u` on bash 4.4 and later: it declared its width variable
+  without initialising it, and those versions apply `set -u` inside arithmetic contexts where bash
+  3.2 substitutes 0. Only reachable from a caller that sets `-u`, which is why it surfaced in the
+  prompt harness rather than in `roll` itself.
 
 ### Security
 
@@ -108,7 +112,10 @@ now warn (and become an error in 0.9.0), and gum becomes a dependency. Both are 
 ### Internal
 
 - ShellCheck runs on macOS as well as Ubuntu, over `commands/**`, the help files, `utils/` and the
-  CI scripts, and passes.
+  CI scripts, and passes on both. The Ubuntu leg had been red for most of the cycle: Ubuntu ships
+  ShellCheck 0.9.0, which reports four findings (SC2002, SC2015, SC2236) that the 0.11.0 on macOS
+  no longer raises, so a green local run said nothing about CI. Those four are fixed in code rather
+  than silenced in `.shellcheckrc`.
 - A smoke suite runs on both platforms: the Docker-free command set, a prompt-contract harness, and
   a parse check that catches the bash 3.2 heredoc trap and any command re-invoking its own help.
 - New shared libraries: `utils/interact.sh` (prompts and styled output), `utils/backup.sh` (the

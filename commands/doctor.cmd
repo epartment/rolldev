@@ -210,9 +210,11 @@ function checkGlobalPort() {
     local occupied=0
     if command -v lsof >/dev/null 2>&1; then
         if [[ "${proto}" == "udp" ]]; then
-            lsof -nP -iUDP:"${port}" >/dev/null 2>&1 && occupied=1 || true
-        else
-            lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1 && occupied=1 || true
+            if lsof -nP -iUDP:"${port}" >/dev/null 2>&1; then
+                occupied=1
+            fi
+        elif lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+            occupied=1
         fi
     fi
 

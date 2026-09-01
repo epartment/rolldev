@@ -54,7 +54,7 @@ TRAEFIK_SUBDOMAIN=app
 EOF
 
 ENV_INIT_FILE=$(fetchEnvInitFile)
-if [[ ! -z $ENV_INIT_FILE ]]; then
+if [[ -n "${ENV_INIT_FILE}" ]]; then
   export ROLL_ENV_NAME
   export GENERATED_APP_KEY="base64:$(dd if=/dev/urandom bs=1 count=32 2>/dev/null | base64)"
   envsubst '$ROLL_ENV_NAME:$GENERATED_APP_KEY' < "${ENV_INIT_FILE}" >> "${ROLL_ENV_PATH}/.env.roll"

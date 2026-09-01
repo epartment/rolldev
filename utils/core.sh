@@ -29,7 +29,10 @@ function fatal {
 ## draw a box around the given lines, with the text rendered in the given tput setaf color
 function box() {
   local color="$1"; shift
-  local s=("$@") b w use_tput=0
+  ## b and w must be initialised, not merely declared: bash 4.4 and later apply `set -u` inside
+  ## arithmetic contexts, so the `((w < ${#l}))` below aborts on an unset w. bash 3.2 treats it as
+  ## 0, which is why this only ever failed on Linux.
+  local s=("$@") b="" w=0 use_tput=0
 
   # only enable colors if we have a tty and TERM is set (and not "dumb")
   if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]] && command -v tput >/dev/null 2>&1; then

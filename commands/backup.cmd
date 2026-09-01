@@ -907,7 +907,7 @@ case "${BACKUP_COMMAND_PARAMS[0]}" in
             # First check if directory exists (uncompressed backup)
             metadata_file="${BACKUP_BASE_DIR}/$backup_id/metadata/backup.json"
             if [[ -f "$metadata_file" ]]; then
-                cat "$metadata_file" | jq '.' 2>/dev/null || cat "$metadata_file"
+                jq '.' "$metadata_file" 2>/dev/null || cat "$metadata_file"
             else
                 # Look for compressed archive
                 archive_file=""

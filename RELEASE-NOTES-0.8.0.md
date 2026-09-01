@@ -112,7 +112,9 @@ environment appearing to come up fine. Tracked as H1 in the README.
 ## For contributors
 
 - ShellCheck runs on macOS as well as Ubuntu, over `commands/**`, the help files, `utils/` and the
-  CI scripts, and it passes.
+  CI scripts, and it passes on both. Note that Ubuntu ships ShellCheck 0.9.0 while Homebrew has
+  0.11.0, and the older version raises four findings the newer one does not, so a clean local run
+  is not proof the gate is green.
 - A smoke suite runs on both platforms: the Docker-free command set, a prompt-contract harness, and
   a parse check that catches the bash 3.2 heredoc trap and any command that re-invokes its own help.
 - `utils/interact.sh`, `utils/backup.sh` and `utils/magento2-init.sh` are new shared libraries.
