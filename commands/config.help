@@ -24,6 +24,16 @@ ROLL_USAGE=$(cat <<EOF
   get <key> [default]   Get configuration value from current environment
                         Returns default if key is not set
 
+  version [service] [version]
+                        Change a service version in .env.roll interactively.
+                        Prompts for the service, then for one of the versions its
+                        image actually has, read live from the image registry.
+                        Supply both arguments to skip the prompts.
+
+  versions [service]    Without a service: show the version this project pins for
+                        every service, and whether that service is enabled.
+                        With a service: list its published versions, one per line.
+
   check-pins            List enabled services with no version pin. Exits 1 if any
                         are missing, so scripts and CI can gate on it.
 
@@ -39,6 +49,11 @@ ROLL_USAGE=$(cat <<EOF
   roll config schema                  # Show configuration schema
   roll config set ROLL_REDIS 1       # Enable Redis
   roll config get PHP_VERSION 8.1    # Get PHP version (default 8.1)
+  roll config versions               # What this project pins today
+  roll config versions php           # PHP versions the image is built for
+  roll config version                # Pick a service, then pick a version
+  roll config version php            # Pick a PHP version
+  roll config version php 8.3        # Set PHP_VERSION=8.3 without prompting
   roll config check-pins             # List version pins that are missing
   roll config fix-pins               # Write them into .env.roll
 
@@ -52,5 +67,10 @@ ROLL_USAGE=$(cat <<EOF
   • Use 'schema' to see all available configuration options
   • Unpinned versions of enabled services warn in 0.8.0 and become an error in 0.9.0;
     'fix-pins' resolves that without changing which images the project runs
+  • 'version' and 'versions' read the tag list from the registry the environment pulls
+    from (\$ROLL_IMAGE_REPOSITORY), cached for an hour; ROLL_TAG_CACHE_TTL=0 refetches
+  • Selecting 'mysql' on a MariaDB project (or the reverse) also switches DB_DISTRIBUTION,
+    after asking - the existing database volume is not readable by the other engine
+  • Changing a version only edits .env.roll; apply it with 'roll env down && roll env up'
 EOF
 ) 

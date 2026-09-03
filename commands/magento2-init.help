@@ -75,5 +75,3 @@ ROLL_USAGE=$(cat <<EOF
 
 EOF
 )
-
-echo -e "${ROLL_USAGE}" 

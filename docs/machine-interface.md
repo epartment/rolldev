@@ -137,6 +137,19 @@ roll config fix-pins      # writes the versions the project runs today
 
 `check-pins` is the one to put in CI. See [Service version pins](configuration/version-pins.md).
 
+Changing a pin needs no terminal either. `roll config version <service> <version>` writes it
+directly, and `roll config versions <service>` lists the versions that service's image has, one per
+line on stdout, so a script can pick one:
+
+```bash
+roll config versions elasticsearch          # 9.5, 9.4, 9.3, ... newest first
+roll config version elasticsearch 8.19      # write ELASTICSEARCH_VERSION=8.19
+```
+
+Both write nothing but the pin, and `roll config versions` with no service reports what the project
+pins today without touching the network. Called with no arguments, `roll config version` needs a
+terminal to prompt on and fails naming the non-interactive form rather than hanging.
+
 ## Running many environments on one host
 
 Two settings exist for build servers running several environments at once:
