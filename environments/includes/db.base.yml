@@ -5,7 +5,7 @@ services:
 
   db:
     hostname: "${ROLL_ENV_NAME}-db"
-    image: ${ROLL_IMAGE_REPOSITORY}/${DB_DISTRIBUTION:-mariadb}:${DB_DISTRIBUTION_VERSION:-10.4}
+    image: ${ROLL_IMAGE_REPOSITORY}/${DB_DISTRIBUTION:-mariadb}:${DB_DISTRIBUTION_VERSION}
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-app}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-app}
@@ -15,6 +15,20 @@ services:
     volumes:
       - dbdata:/var/lib/mysql
       - sqlhistory:/sql_history
+    healthcheck:
+      ## MariaDB 11 images dropped the mysqladmin compatibility symlink and only ship
+      ## mariadb-admin, while the mysql images ship only mysqladmin; try both so either
+      ## distribution works (mirrors the resolveDbBinary probe in commands/db.cmd).
+      ##
+      ## Deliberately unauthenticated: ping reports whether the server answers, and verified on
+      ## both engines it exits 0 with no credentials and with wrong ones alike, so passing the
+      ## root password would add nothing except a credential in argv on every interval - which
+      ## mysqladmin itself warns about ("Using a password on the command line can be insecure").
+      test: ["CMD-SHELL", "mariadb-admin ping --silent 2>/dev/null || mysqladmin ping --silent 2>/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
 volumes:
   dbdata:

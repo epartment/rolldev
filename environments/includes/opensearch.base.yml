@@ -1,7 +1,7 @@
 services:
   opensearch:
     hostname: "${ROLL_ENV_NAME}-opensearch"
-    image: ${ROLL_IMAGE_REPOSITORY}/opensearch:${OPENSEARCH_VERSION:-2.19}
+    image: ${ROLL_IMAGE_REPOSITORY}/opensearch:${OPENSEARCH_VERSION}
     labels:
       - traefik.enable=true
       - traefik.http.routers.${ROLL_ENV_NAME}-opensearch.tls=true
@@ -12,11 +12,19 @@ services:
       - discovery.type=single-node
       - indices.query.bool.max_clause_count=16384
       - indices.id_field_data.enabled=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms64m -Xmx512m"
+      - "OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS}"
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - DISABLE_SECURITY_PLUGIN=true
     volumes:
       - osdata:/usr/share/opensearch/data
+    healthcheck:
+      ## a bare port probe is not enough here: the container's fixed heap has historically let the
+      ## process look healthy while it is actually dead, so this hits the cluster-health endpoint
+      test: ["CMD", "curl", "-fs", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
 volumes:
   osdata:

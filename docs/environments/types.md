@@ -2,13 +2,24 @@
 
 RollDev currently supports three environment types. These types are passed to `env-init` when configuring a project for local development for the first time. This list of environment types can also be seen by running `roll env-init --help` on your command line. The `docker-compose` configuration used to assemble each environment type can be found in the [environments directory](https://github.com/epartment/rolldev/tree/master/environments) on Github.
 
+`roll env-init` follows RollDev's flag/env-first prompt convention: if you pass a project name and type as arguments (`roll env-init myproject magento2`), it runs non-interactively and never prompts. Leave either out on a terminal and it prompts for the missing value; leave either out with no terminal attached (CI, a script) and it errors naming the argument you need to supply instead of hanging. Re-running `env-init` where a `.env.roll` already exists normally asks whether to overwrite it; set `ROLL_ENV_INIT_FORCE=1` to overwrite without prompting.
+
 ## Local
 
-The `local` environment type does nothing more than declare the `docker-compose` version and label the project network so RollDev will recognize it as belonging to an environment orchestrated by RollDev.
+The `local` environment type is a network-only container — it provides no services of its own. Use it when you need RollDev's networking layer (Traefik, dnsmasq, the shared tunnel) but want to define your own services in a `.roll/roll-env.yml` file.
 
-When this type is used, a `.roll/roll-env.yml` may be placed in the root directory of the project workspace to define the desired containers, volumes, etc needed for the project. An example of a `local` environment type being used can be found in the [m2demo project](https://github.com/davidalger/m2demo).
+**Required:** Every usable `local` project must provide its own `.roll/roll-env.yml` defining which containers to run. If you use the default service toggles (which default to enabled), `roll env config` will fail because it expects those services to be defined in your custom compose fragment.
 
-Similar to the other environment type's base definitions, RollDev supports a `roll-env.darwin.yml` and `roll-env.linux.yml`
+**To use the `local` type:**
+
+1. Run `roll env-init myproject local`
+2. Create `.roll/roll-env.yml` in your project root with your desired services (nginx, php-fpm, db, etc.)
+3. Set service toggles to 0 in `.env.roll` for any services you are NOT providing in your custom fragment: `ROLL_NGINX=0`, `ROLL_DB=0`, etc.
+4. Run `roll env up`
+
+**Platform-specific overrides:** RollDev supports `roll-env.darwin.yml` and `roll-env.linux.yml` for macOS/Linux differences, following the same pattern as other environment types.
+
+For an example, see the [m2demo project](https://github.com/davidalger/m2demo).
 
 ## Magento 2
 

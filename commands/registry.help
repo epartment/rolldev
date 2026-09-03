@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 [[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+## @description: Inspect and query the RollDev command registry.
+## @category: utility
 
 echo -e "\033[33mUsage:\033[0m"
 echo "  registry <command> [options]"

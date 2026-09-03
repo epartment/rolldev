@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 [[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+## @description: Display the RollDev command usage banner.
+## @category: utility
 
 ROLL_HEADER='
 \n
@@ -49,9 +51,12 @@ RollDev version $(cat ${ROLL_DIR}/version)
   svc               	Orchestrates global services such as traefik, portainer and dnsmasq via docker-compose
   env-init          	Configure environment by adding \033[31m'.env.roll'\033[0m file to the current working directory
   magento2-init     	Scaffold a complete Magento 2 project from scratch
-  env               	Controls an environment from any point within the root project directory
-  config            	Manage and validate Roll configuration (see \033[31m'roll config -h'\033[0m for details)
+  env               	Controls an environment (see \033[31m'roll env -h'\033[0m for details, including \033[31m'roll env sh'\033[0m)
+  config            	Manage and validate Roll configuration (see \033[31m'roll config -h'\033[0m for check-pins, fix-pins)
   registry          	Manage and inspect command registry (see \033[31m'roll registry -h'\033[0m for details)
+  has-command       	Check whether a command is available; communicates via exit code only
+  copyfromcontainer 	Copy a file, folder, or debug artifact from the container to the host
+  copytocontainer   	Copy a file, folder, or the entire project source from the host into the container
   db                	Interacts with the db service on an environment (see \033[31m'roll db -h'\033[0m for details)
   redis             	Interacts with the redis service on an environment (see \033[31m'roll redis -h'\033[0m for details)
   backup                Create archive backups of an environment (see \033[31m'roll backup -h'\033[0m for details)
@@ -60,8 +65,14 @@ RollDev version $(cat ${ROLL_DIR}/version)
   install           	Initializes or updates roll configuration on host machine
   shell             	Launches into a shell within the current project environment
   status                Display list of all running RollDev project environments
+  describe          	Display detailed information about the current environment
+  doctor            	Diagnose whether the current project environment is fit to run
   debug             	Launches debug enabled shell within current project environment
   sign-certificate  	Signs a wildcard certificate including all passed hostnames on the SAN list
+  convert           	Convert a Warden project in the current directory to RollDev
+  duplicate         	Duplicate the current environment to a new environment with a different name
+  multistore        	Manage Magento multi-store configuration
+  vnc               	Connect to Selenium VNC server
   version           	Show version information
 
 \033[33mEnvironment commands:\033[0m
@@ -71,10 +82,14 @@ RollDev version $(cat ${ROLL_DIR}/version)
   bash         		Allocate TTY with shell (simulair to \033[31m'roll shell'\033[0m)
   cli \033[32m%command%\033[0m     	Run command inside container with TTY allocation
   clinotty \033[32m%command%\033[0m    Run command inside container without TTY allocation
+  cliq \033[32m%command%\033[0m       Run command inside container without TTY allocation and suppress output
   root \033[32m%command%\033[0m        Run command inside container with TTY allocation as root user
   rootnotty \033[32m%command%\033[0m   Run command inside container without TTY allocation as root user
   rootshell          	Allocate TTY with shell as root user
   composer \033[32m%command%\033[0m    run composer inside php-fpm container with params
+  node \033[32m%command%\033[0m        Run node commands inside the container
+  npm \033[32m%command%\033[0m         Run npm commands inside the container
+  magerun \033[32m%command%\033[0m     Run magerun commands inside the container
   add-php-ext \033[32m%ext%\033[0m 	add custom php extensions to the container
   browsersync  	      See browsersync domain and port values
 ${ENV_TYPE_USAGE:1}

@@ -1,7 +1,7 @@
 services:
   redis:
     hostname: "${ROLL_ENV_NAME}-dragonfly"
-    image: ${ROLL_IMAGE_REPOSITORY}/dragonfly:${DRAGONFLY_VERSION:-1.3}
+    image: ${ROLL_IMAGE_REPOSITORY}/dragonfly:${DRAGONFLY_VERSION}
     volumes:
       - dragonfly:/data
 

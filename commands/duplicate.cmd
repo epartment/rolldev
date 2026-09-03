@@ -28,8 +28,11 @@ fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)
-            roll duplicate --help
-            exit 0
+            ## Do NOT re-invoke `roll duplicate --help` here. `duplicate` is on roll's ROLL_CMD_ANYARGS
+            ## list, so roll's own parser stops at --help and passes it straight through to this
+            ## script - re-invoking roll lands right back on this branch and recurses forever.
+            ## usage.cmd renders ROLL_CMD_HELP (duplicate.help) and exits on its own.
+            source "${ROLL_DIR}/commands/usage.cmd"
             ;;
         --encrypt=*)
             DUPLICATE_ENCRYPT="${1#*=}"
@@ -96,51 +99,6 @@ if [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; then
     DUPLICATE_NAME="${POSITIONAL_ARGS[0]}"
 fi
 
-# Utility functions for duplicate operations
-function promptPassword() {
-    local prompt="$1"
-    local password=""
-    local confirm=""
-    
-    # Don't prompt in quiet mode or non-interactive shells
-    if [[ $DUPLICATE_QUIET -eq 1 ]] || [[ ! -t 0 ]]; then
-        error "Password required but running in non-interactive mode. Use --encrypt=password instead."
-        exit 1
-    fi
-    
-    echo -n "$prompt: " >&2
-    read -s password
-    echo >&2
-    
-    if [[ -z "$password" ]]; then
-        error "Password cannot be empty"
-        exit 1
-    fi
-    
-    # Confirm password for security
-    echo -n "Confirm password: " >&2
-    read -s confirm
-    echo >&2
-    
-    if [[ "$password" != "$confirm" ]]; then
-        error "Passwords do not match"
-        exit 1
-    fi
-    
-    echo "$password"
-}
-
-function logMessage() {
-    [[ $DUPLICATE_QUIET -eq 1 ]] && return
-    local level="$1"
-    shift
-    case "$level" in
-        INFO) info "$@" ;;
-        SUCCESS) success "$@" ;;
-        WARNING) warning "$@" ;;
-        ERROR) error "$@" ;;
-    esac
-}
 
 function validateDuplicateName() {
     local name="$1"
@@ -705,9 +663,14 @@ function performDuplicate() {
     # Validate inputs
     validateDuplicateName "$new_name" || exit 1
     
-    # Handle interactive password prompt if needed
+    # Handle interactive password prompt if needed. Quiet mode is an explicit request for no
+    # interaction, so it stays a hard error even when stdin happens to be a terminal.
     if [[ "$DUPLICATE_ENCRYPT" == "PROMPT" ]]; then
-        DUPLICATE_ENCRYPT=$(promptPassword "Enter encryption password for backup")
+        if [[ $DUPLICATE_QUIET -eq 1 ]]; then
+            fatal "Password required but running in quiet mode. Use --encrypt=<password> instead."
+        fi
+        DUPLICATE_ENCRYPT=""
+        promptPassword DUPLICATE_ENCRYPT "--encrypt=<password>" "Enter encryption password for backup" "Confirm encryption password for backup"
     fi
     
     local current_env_name="$ROLL_ENV_NAME"

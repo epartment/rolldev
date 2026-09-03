@@ -6,7 +6,10 @@ loadEnvConfig "${ROLL_ENV_PATH}" || exit $?
 assertDockerRunning
 
 if (( ${#ROLL_PARAMS[@]} == 0 )) || [[ "${ROLL_PARAMS[0]}" == "help" ]]; then
-  roll env --help || exit $? && exit $?
+  ## Do NOT re-invoke `roll env --help` here. `env` is on roll's ROLL_CMD_ANYARGS list, so roll's
+  ## own parser stops at --help and passes it through to this script with ROLL_PARAMS empty -
+  ## re-invoking roll lands right back on this branch and forks until killed.
+  source "${ROLL_DIR}/commands/usage.cmd"
 fi
 
 if [[ ${ROLL_REDIS} -eq 1 && ${ROLL_DRAGONFLY} -eq 1 ]]; then
@@ -17,92 +20,13 @@ trap '' ERR
 
 ## define source repository
 if [[ -f "${ROLL_HOME_DIR}/.env" ]]; then
-  eval "$(cat "${ROLL_HOME_DIR}/.env" | sed 's/\r$//g' | grep "^ROLL_")"
+  loadConfigFromFile "${ROLL_HOME_DIR}/.env"
 fi
 export ROLL_IMAGE_REPOSITORY="${ROLL_IMAGE_REPOSITORY:-"ghcr.io/epartment/roll"}"
 
-## configure environment type defaults
-if [[ ${ROLL_ENV_TYPE} =~ ^magento || ${ROLL_ENV_TYPE} =~ ^wordpress ]]; then
-    export ROLL_SVC_PHP_VARIANT=-${ROLL_ENV_TYPE}
-fi
-
-if [[ ${NODE_VERSION} -ne 0 ]]; then
-    export ROLL_SVC_PHP_NODE=-node${NODE_VERSION}
-fi
-
-if [[ -z ${DB_DISTRIBUTION} ]]; then
-    export DB_DISTRIBUTION="mariadb"
-fi
-
-if [[ -z ${DB_DISTRIBUTION_VERSION} ]]; then
-    if [[ ${DB_DISTRIBUTION} == "mysql" ]]; then
-        export DB_DISTRIBUTION_VERSION=${MYSQL_VERSION:-8.0}
-    else
-        export DB_DISTRIBUTION_VERSION=${MARIADB_VERSION:-10.4}
-    fi
-fi
-
-## configure xdebug version
-export XDEBUG_VERSION="debug" # xdebug2 image
-if [[ ${PHP_XDEBUG_3} -eq 1 ]]; then
-    export XDEBUG_VERSION="xdebug3"
-fi
-
-if [[ ${ROLL_ENV_TYPE} != local ]]; then
-    ROLL_NGINX=${ROLL_NGINX:-1}
-    ROLL_DB=${ROLL_DB:-1}
-    ROLL_REDIS=${ROLL_REDIS:-1}
-
-    # define bash history folder for changing permissions
-    ROLL_CHOWN_DIR_LIST="/bash_history /home/www-data/.ssh ${ROLL_CHOWN_DIR_LIST:-}"
-fi
-export CHOWN_DIR_LIST=${ROLL_CHOWN_DIR_LIST:-}
-
-if [[ ${ROLL_ENV_TYPE} == "magento1" ]]; then
-	if [[ -f "${ROLL_ENV_PATH}/.modman/.basedir" ]]; then
-  	export NGINX_PUBLIC='/'$(cat "${ROLL_ENV_PATH}/.modman/.basedir")
-  fi
-
-  if [[ ${ROLL_MAGENTO_STATIC_CACHING} -eq 1 ]]; then
-    export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento1.conf}
-  fi
-  export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento1-dev.conf}
-fi
-export NGINX_PUBLIC=${NGINX_PUBLIC:-}
-
-if [[ ${ROLL_ENV_TYPE} == "magento2" ]]; then
-    ROLL_VARNISH=${ROLL_VARNISH:-1}
-    ROLL_ELASTICSEARCH=${ROLL_ELASTICSEARCH:-1}
-    ROLL_RABBITMQ=${ROLL_RABBITMQ:-1}
-    ROLL_ADMIN_AUTOLOGIN=${ROLL_ADMIN_AUTOLOGIN:-0}
-
-    if [[ ${ROLL_MAGENTO_STATIC_CACHING} -eq 1 ]]; then
-      if [[ ${ROLL_ADMIN_AUTOLOGIN} -eq 1 ]]; then
-        export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2-autologin.conf}
-      else
-        export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2.conf}
-      fi
-    fi
-
-    if [[ ${ROLL_ADMIN_AUTOLOGIN} -eq 1 ]]; then
-        export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2-dev-autologin.conf}
-    else
-        export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2-dev.conf}
-    fi
-
-    export NGINX_TEMPLATE=${NGINX_TEMPLATE:-magento2-dev.conf}
-fi
-export NGINX_TEMPLATE=${NGINX_TEMPLATE:-}
-
-## WSL1/WSL2 are GNU/Linux env type but still run Docker Desktop
-if [[ ${XDEBUG_CONNECT_BACK_HOST} == '' ]] && grep -sqi microsoft /proc/sys/kernel/osrelease; then
-    export XDEBUG_CONNECT_BACK_HOST=host.docker.internal
-fi
-
-## For linux, if UID is 1000, there is no need to use the socat proxy.
-if [[ ${ROLL_ENV_SUBT} == "linux" && $UID == 1000 ]]; then
-    export SSH_AUTH_SOCK_PATH_ENV=/run/host-services/ssh-auth.sock
-fi
+## Environment-type defaults, derived variables and OS-specific paths all come from
+## loadEnvConfig above (utils/config.sh). They used to be recomputed here as well, which is why
+## the config loader's own derivations could stay broken unnoticed for so long.
 
 ## configure docker-compose files
 DOCKER_COMPOSE_ARGS=()
@@ -116,7 +40,13 @@ fi
 if [[ ${ROLL_BROWSERSYNC} -eq 1 ]]; then
   export BROWSERSYNC_PORT_WEB=$(roll browsersync freeport web)
   export BROWSERSYNC_PORT_UI=$(roll browsersync freeport ui)
-  appendEnvPartialIfExists "browsersync"
+  if [[ ${ROLL_PUBLISH_PORTS} -eq 1 ]]; then
+    appendEnvPartialIfExists "browsersync"
+  else
+    ## ROLL_PUBLISH_PORTS=0 skips host port publication entirely - needed to run many
+    ## environments unattended on one host without port collisions.
+    appendEnvPartialIfExists "browsersync.noports"
+  fi
 fi
 
 [[ ${ROLL_INCLUDE_GIT} -eq 1 ]] \
@@ -192,6 +122,32 @@ if [[ "${ROLL_PARAMS[0]}" == "describe" ]]; then
     exit $?
 fi
 
+## handle doctor subcommand
+if [[ "${ROLL_PARAMS[0]}" == "doctor" ]]; then
+    source "${ROLL_DIR}/commands/doctor.cmd"
+    exit $?
+fi
+
+## handle sh sugar for shell commands in containers
+if [[ "${ROLL_PARAMS[0]}" == "sh" ]]; then
+    if (( ${#ROLL_PARAMS[@]} < 3 )); then
+        fatal "roll env sh requires a service name and command: roll env sh <service> '<command>'"
+    fi
+    ## the command must arrive as ONE argument; refusing extra words is deliberate, because
+    ## silently running only the first of them is exactly the confusion this subcommand exists
+    ## to prevent
+    if (( ${#ROLL_PARAMS[@]} > 3 )); then
+        fatal "roll env sh takes a single quoted command: roll env sh ${ROLL_PARAMS[1]} '${ROLL_PARAMS[*]:2}'"
+    fi
+    ## env is in ROLL_CMD_ANYARGS, so roll's parse loop stops at the first dash-prefixed word and
+    ## leaves it in "$@" instead of ROLL_PARAMS; catch those here or they reach sh -c as $0
+    if (( $# > 0 )); then
+        fatal "roll env sh takes a single quoted command: roll env sh ${ROLL_PARAMS[1]} '${ROLL_PARAMS[2]} $*'"
+    fi
+    # Transform: sh <service> '<command>' -> exec -T <service> sh -c '<command>'
+    ROLL_PARAMS=("exec" "-T" "${ROLL_PARAMS[1]}" "sh" "-c" "${ROLL_PARAMS[2]}")
+fi
+
 ## disconnect peered service containers from environment network
 if [[ "${ROLL_PARAMS[0]}" == "down" ]]; then
     disconnectPeeredServices "$(renderEnvNetworkName)"
@@ -203,7 +159,7 @@ if [[ "${ROLL_PARAMS[0]}" == "up" ]]; then
 #		# update images if needed
 #		roll env pull
     ## create environment network for attachments if it does not already exist
-    if [[ -z "$(docker network ls -f 'name=$(renderEnvNetworkName)' -q)" ]]; then
+    if [[ -z "$(docker network ls -f "name=^$(renderEnvNetworkName)$" -q)" ]]; then
 
         docker compose \
             --env-file "${ROLL_ENV_PATH}/.env.roll" --project-directory "${ROLL_ENV_PATH}" -p "${ROLL_ENV_NAME}" \
@@ -282,6 +238,7 @@ then
 fi
 
 ## set ssh-agent permissions for container user
-if ([[ "${ROLL_PARAMS[0]}" == "up" ]] || [[ "${ROLL_PARAMS[0]}" == "start" ]]) then
-    roll root chmod 777 /run/host-services/ssh-auth.sock
+if ([[ "${ROLL_PARAMS[0]}" == "up" ]] || [[ "${ROLL_PARAMS[0]}" == "start" ]]) && [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
+    roll root chown www-data /run/host-services/ssh-auth.sock
+    roll root chmod 600 /run/host-services/ssh-auth.sock
 fi

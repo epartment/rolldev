@@ -1,7 +1,7 @@
 services:
   magepack:
     hostname: "${ROLL_ENV_NAME}-magepack"
-    image: ${ROLL_IMAGE_REPOSITORY}/magepack:${MAGEPACK_VERSION:-2.3}
+    image: ${ROLL_IMAGE_REPOSITORY}/magepack:${MAGEPACK_VERSION}
     environment:
       - TRAEFIK_DOMAIN
       - TRAEFIK_SUBDOMAIN

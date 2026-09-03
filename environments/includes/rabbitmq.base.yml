@@ -1,7 +1,7 @@
 services:
   rabbitmq:
     hostname: "${ROLL_ENV_NAME}-rabbitmq"
-    image: ${ROLL_IMAGE_REPOSITORY}/rabbitmq:${RABBITMQ_VERSION:-3.8}
+    image: ${ROLL_IMAGE_REPOSITORY}/rabbitmq:${RABBITMQ_VERSION}
     labels:
       - traefik.enable=true
       - traefik.http.routers.${ROLL_ENV_NAME}-rabbitmq.tls=true
@@ -10,6 +10,12 @@ services:
       - traefik.docker.network=${ROLL_ENV_NAME}_default
     volumes:
       - rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   rabbitmq:

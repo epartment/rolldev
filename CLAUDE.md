@@ -28,12 +28,14 @@ itself, so it is not duplicated in the README.
 
 ## Before you start
 
-- **Check the known defects before diagnosing anything.** Several surprising behaviours are already
-  documented with a verified root cause in
-  [Known issues & improvement points](README.md#known-issues--improvement-points) — a red ShellCheck
-  run, `roll db dump` failing, `roll registry categories` dying on macOS, magento2 environments coming
-  up without Varnish or a search engine, images never refreshing on Linux. Do not re-derive them, and
-  do not report one as a new discovery.
+- **Check the known defects before diagnosing anything.**
+  [Known issues & improvement points](README.md#known-issues--improvement-points) documents what is
+  still open, with a verified root cause — currently one finding, a restored search-engine volume
+  coming back unwritable so Elasticsearch will not start. Do not re-derive it, and do not report it
+  as a new discovery. The defects that section used to list (`roll db dump`, `roll registry
+  categories` on macOS, magento2 coming up without Varnish or a search engine, images never
+  refreshing on Linux) were fixed for 0.8.0 — see [CHANGELOG.md](CHANGELOG.md) rather than expecting
+  them to still reproduce.
 - **Check [Audited and clean](README.md#audited-and-clean) before investigating something that looks
   wrong.** It records what was checked and found correct, including two things that read as bugs and
   are not.
@@ -78,11 +80,38 @@ it, ask the user for the local directory** rather than guessing; there is no der
 
 There is no unit-test suite. What is available:
 
-- **ShellCheck**, the only CI gate: `shellcheck commands/*.cmd utils/*.sh`. Note that it **already
-  fails** on a clean checkout (finding **H1** in the README), so a red run is not evidence that your
-  change broke something. Capture the finding count before your change and compare, or scope the run
-  to the files you touched. The gate also does not cover `commands/magento2/`, `commands/wordpress/`
-  or the `.help` files (finding **L9**), so lint those explicitly if you edit them.
+- **ShellCheck**, run by CI over every shell file in the repository:
+
+  ```bash
+  shellcheck commands/*.cmd commands/*/*.cmd commands/*.help commands/*/*.help utils/*.sh .github/scripts/*.sh
+  ```
+
+  It passes on a clean checkout, so **any** finding your change produces is yours to fix. `bin/roll`
+  itself is not in the gate.
+
+  **A clean local run is not proof the gate is green.** The Ubuntu runner installs ShellCheck from
+  apt (0.9.0 on 24.04) while Homebrew ships 0.11.0, and the older version raises findings the newer
+  one dropped — SC2002, SC2015 and SC2236 among them — so the macOS leg can pass while Ubuntu fails
+  on code neither of you changed. When in doubt, reproduce the Ubuntu leg in a container:
+
+  ```bash
+  docker run --rm -v "$PWD":/src:ro ubuntu:24.04 bash -c 'apt-get update -qq && apt-get install -y -qq shellcheck gettext-base docker.io docker-compose-v2 && cp -r /src /repo && cd /repo && shellcheck commands/*.cmd commands/*/*.cmd commands/*.help commands/*/*.help utils/*.sh .github/scripts/*.sh && .github/scripts/smoke.sh native'
+  ```
+
+  That also exercises bash 5, which differs from macOS's 3.2 in the other direction: bash 4.4 and
+  later apply `set -u` inside arithmetic contexts, so `((x < 1))` on an unset `x` aborts there while
+  3.2 substitutes 0.
+- **The smoke suite**, which CI runs on both platforms and which needs no Docker daemon and no
+  project checkout:
+
+  ```bash
+  .github/scripts/smoke.sh bash32     # exercises /bin/bash 3.2 - use this one on macOS
+  .github/scripts/smoke.sh native
+  ```
+
+  It covers the Docker-free command set, `env-init` + `config validate` in a temporary directory, a
+  parse check that catches the bash 3.2 heredoc trap and any command re-invoking its own help, and a
+  prompt-contract harness. Anything touching `roll env` or service containers is still on the author.
 - **Running the CLI from source:** `./bin/roll <command>`. On macOS invoke it as
   `/bin/bash ./bin/roll <command>` when checking Bash 3.2 compatibility, so the system bash is
   exercised rather than a newer one from `PATH`.

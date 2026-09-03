@@ -9,10 +9,17 @@
 ROLL_REGISTRY_COMMANDS=()
 ROLL_REGISTRY_PATHS=()
 ROLL_REGISTRY_HELP_PATHS=()
+ROLL_REGISTRY_SOURCES=()
 ROLL_REGISTRY_CATEGORIES=()
 ROLL_REGISTRY_DESCRIPTIONS=()
 ROLL_REGISTRY_PRIORITIES=()
 ROLL_REGISTRY_INITIALIZED=0
+
+# Real category/description metadata is parsed from `.help` file headers (see
+# extractCommandMetadata below) and is only ever loaded on demand by loadRegistryMetadata - never
+# during initializeRegistry, which runs on every `roll` dispatch. This flag tracks whether that
+# lazy pass has happened yet for the current registry snapshot.
+ROLL_REGISTRY_METADATA_LOADED=0
 
 # Command search paths with priorities (lower number = higher priority)
 # Note: ROLL_HOME_DIR may not be available when this script is sourced, so we define this dynamically
@@ -64,43 +71,102 @@ function findCommandIndex() {
     echo -1
 }
 
-## Extract command metadata from help file
+## Read the `## @description:` / `## @category:` header a `.help` file may carry in its first 5
+## lines and echo the requested field. One grep per file (see readCommandMetadataHeader below,
+## which this delegates to), and only ever called from loadRegistryMetadata - never from
+## registerCommand/scanCommandDirectory, so it does not run during normal command dispatch.
+## A missing file or missing header degrades gracefully: empty description, "general" category -
+## RECLU's `.help` files predate this convention and are expected to hit that fallback.
 function extractCommandMetadata() {
     local help_file="$1"
     local metadata_type="$2"
-    
-    if [[ ! -f "$help_file" ]]; then
-        echo ""
-        return 0
-    fi
-    
+
+    readCommandMetadataHeader "$help_file"
+
     case "$metadata_type" in
         description)
-            # Simple approach - just return empty for now
-            echo ""
+            echo "$ROLL_METADATA_DESCRIPTION"
             ;;
         category)
-            # Simple approach - just return general for now
-            echo "general"
+            echo "$ROLL_METADATA_CATEGORY"
             ;;
         *)
             echo ""
             ;;
     esac
-    
+}
+
+## Parse both metadata fields from a help file in a single grep pass, setting
+## ROLL_METADATA_DESCRIPTION and ROLL_METADATA_CATEGORY (category defaults to "general").
+function readCommandMetadataHeader() {
+    local help_file="$1"
+    local header line
+
+    ROLL_METADATA_DESCRIPTION=""
+    ROLL_METADATA_CATEGORY="general"
+
+    [[ -f "$help_file" ]] || return 0
+
+    ## `|| true` is required: grep exits 1 on no match, and under bin/roll set -e a
+    ## VAR=$(cmd) assignment is NOT exempt the way a plain command in an && list is - it would
+    ## kill the whole CLI for every .help file that has no header (e.g. all of RECLU own files).
+    header="$(head -n 5 "$help_file" | grep -E '^## @(description|category):')" || true
+    [[ -z "$header" ]] && return 0
+
+    while IFS= read -r line; do
+        case "$line" in
+            '## @description:'*)
+                ROLL_METADATA_DESCRIPTION="${line#'## @description:'}"
+                ROLL_METADATA_DESCRIPTION="${ROLL_METADATA_DESCRIPTION# }"
+                ;;
+            '## @category:'*)
+                ROLL_METADATA_CATEGORY="${line#'## @category:'}"
+                ROLL_METADATA_CATEGORY="${ROLL_METADATA_CATEGORY# }"
+                [[ -z "$ROLL_METADATA_CATEGORY" ]] && ROLL_METADATA_CATEGORY="general"
+                ;;
+        esac
+    done <<< "$header"
+
+    ## Explicit return 0: without it the function's exit status is whatever the last read-loop
+    ## iteration left behind, which under bash 3.2 can be the (exempted-in-place-but-still-
+    ## propagated) status of the `[[ -z ]] &&` guard above. That nonzero status then kills the
+    ## whole CLI at the bare top-level call site in loadRegistryMetadata, since a plain command is
+    ## not exempt from set -e the way a command inside a while/&&/|| list is.
     return 0
 }
 
-## Register a single command in the registry
+## Populate real category/description metadata for every registered command from its `.help`
+## file. Lazy and memoized via ROLL_REGISTRY_METADATA_LOADED: call this from the registry
+## sub-commands that actually display metadata (list --format json, categories, search, stats,
+## info, export). Never call it from initializeRegistry/scanCommandDirectory - that path runs on
+## every `roll` invocation and must stay grep-free to keep startup cost flat.
+function loadRegistryMetadata() {
+    initializeRegistry
+
+    [[ $ROLL_REGISTRY_METADATA_LOADED -eq 1 ]] && return 0
+
+    local i=0
+    while [[ $i -lt ${#ROLL_REGISTRY_COMMANDS[@]} ]]; do
+        readCommandMetadataHeader "${ROLL_REGISTRY_HELP_PATHS[$i]}"
+        ROLL_REGISTRY_DESCRIPTIONS[$i]="$ROLL_METADATA_DESCRIPTION"
+        ROLL_REGISTRY_CATEGORIES[$i]="$ROLL_METADATA_CATEGORY"
+        i=$((i + 1))
+    done
+
+    ROLL_REGISTRY_METADATA_LOADED=1
+}
+
+## Register a single command in the registry. "source" is the search-path tier the command was
+## found under (environment/global) - not the real category, which is loaded lazily later.
 function registerCommand() {
     local command="$1"
     local cmd_path="$2"
     local help_path="$3"
     local priority="$4"
-    local category="${5:-general}"
-    
+    local source="${5:-global}"
+
     local existing_index=$(findCommandIndex "$command")
-    
+
     if [[ $existing_index -ge 0 ]]; then
         # Command already exists, check priority
         local existing_priority="${ROLL_REGISTRY_PRIORITIES[$existing_index]}"
@@ -109,8 +175,9 @@ function registerCommand() {
             ROLL_REGISTRY_PATHS[$existing_index]="$cmd_path"
             ROLL_REGISTRY_HELP_PATHS[$existing_index]="$help_path"
             ROLL_REGISTRY_PRIORITIES[$existing_index]="$priority"
-            ROLL_REGISTRY_CATEGORIES[$existing_index]="$category"
-            ROLL_REGISTRY_DESCRIPTIONS[$existing_index]="$(extractCommandMetadata "$help_path" "description")"
+            ROLL_REGISTRY_SOURCES[$existing_index]="$source"
+            ROLL_REGISTRY_CATEGORIES[$existing_index]=""
+            ROLL_REGISTRY_DESCRIPTIONS[$existing_index]=""
         fi
     else
         # New command, add to registry
@@ -118,8 +185,9 @@ function registerCommand() {
         ROLL_REGISTRY_PATHS+=("$cmd_path")
         ROLL_REGISTRY_HELP_PATHS+=("$help_path")
         ROLL_REGISTRY_PRIORITIES+=("$priority")
-        ROLL_REGISTRY_CATEGORIES+=("$category")
-        ROLL_REGISTRY_DESCRIPTIONS+=("$(extractCommandMetadata "$help_path" "description")")
+        ROLL_REGISTRY_SOURCES+=("$source")
+        ROLL_REGISTRY_CATEGORIES+=("")
+        ROLL_REGISTRY_DESCRIPTIONS+=("")
     fi
 }
 
@@ -128,30 +196,24 @@ function scanCommandDirectory() {
     local search_entry="$1"
     local priority="${search_entry%%:*}"
     local directory="${search_entry##*:}"
-    local category="${2:-general}"
-    
+    local source="${2:-global}"
+
     # Skip if directory doesn't exist
     if [[ ! -d "$directory" ]]; then
         return 0
     fi
-    
+
     local cmd_file help_file command_name
-    
+
     # Find all .cmd files in directory
     for cmd_file in "$directory"/*.cmd; do
         # Skip if no .cmd files found (glob didn't match)
         [[ ! -f "$cmd_file" ]] && continue
-        
+
         command_name="$(basename "$cmd_file" .cmd)"
         help_file="$directory/$command_name.help"
-        
-        # Extract category from help file if available
-        if [[ -f "$help_file" ]]; then
-            local extracted_category="$(extractCommandMetadata "$help_file" "category")"
-            [[ -n "$extracted_category" && "$extracted_category" != "general" ]] && category="$extracted_category"
-        fi
-        
-        registerCommand "$command_name" "$cmd_file" "$help_file" "$priority" "$category"
+
+        registerCommand "$command_name" "$cmd_file" "$help_file" "$priority" "$source"
     done
 }
 
@@ -166,10 +228,12 @@ function initializeRegistry() {
     ROLL_REGISTRY_COMMANDS=()
     ROLL_REGISTRY_PATHS=()
     ROLL_REGISTRY_HELP_PATHS=()
+    ROLL_REGISTRY_SOURCES=()
     ROLL_REGISTRY_CATEGORIES=()
     ROLL_REGISTRY_DESCRIPTIONS=()
     ROLL_REGISTRY_PRIORITIES=()
-    
+    ROLL_REGISTRY_METADATA_LOADED=0
+
     # Scan environment-specific directories first (highest priority)
     while IFS= read -r env_path; do
         [[ -n "$env_path" ]] && scanCommandDirectory "$env_path" "environment"
@@ -198,10 +262,15 @@ function getCommandInfo() {
         help)
             echo "${ROLL_REGISTRY_HELP_PATHS[$index]}"
             ;;
+        source)
+            echo "${ROLL_REGISTRY_SOURCES[$index]}"
+            ;;
         category)
+            loadRegistryMetadata
             echo "${ROLL_REGISTRY_CATEGORIES[$index]}"
             ;;
         description)
+            loadRegistryMetadata
             echo "${ROLL_REGISTRY_DESCRIPTIONS[$index]}"
             ;;
         priority)
@@ -224,7 +293,9 @@ function isCommandRegistered() {
 function listRegisteredCommands() {
     local filter="${1:-}"
     local category_filter="${2:-}"
-    
+
+    [[ -n "$category_filter" ]] && loadRegistryMetadata
+
     local i=0
     while [[ $i -lt ${#ROLL_REGISTRY_COMMANDS[@]} ]]; do
         local command="${ROLL_REGISTRY_COMMANDS[$i]}"
@@ -249,7 +320,9 @@ function listRegisteredCommands() {
 ## List commands by category
 function listCommandsByCategory() {
     local target_category="${1:-}"
-    
+
+    loadRegistryMetadata
+
     # Get unique categories if no specific category requested
     if [[ -z "$target_category" ]]; then
         local categories=()
@@ -270,7 +343,7 @@ function listCommandsByCategory() {
         
         # Display all categories
         for category in "${categories[@]}"; do
-            echo -e "\033[33m${category^} Commands:\033[0m"
+            echo -e "\033[33m$(capitalize "$category") Commands:\033[0m"
             listCommandsByCategory "$category"
             echo ""
         done
@@ -322,7 +395,8 @@ function refreshRegistry() {
 ## Display registry statistics
 function showRegistryStats() {
     initializeRegistry
-    
+    loadRegistryMetadata
+
     echo -e "\033[33mCommand Registry Statistics:\033[0m"
     echo "  Total commands: ${#ROLL_REGISTRY_COMMANDS[@]}"
     
@@ -360,7 +434,7 @@ function showRegistryStats() {
     # Display category counts
     i=0
     while [[ $i -lt ${#categories[@]} ]]; do
-        printf "  %-15s: %d commands\n" "${categories[$i]^}" "${category_counts[$i]}"
+        printf "  %-15s: %d commands\n" "$(capitalize "${categories[$i]}")" "${category_counts[$i]}"
         i=$((i + 1))
     done
 }
@@ -404,27 +478,30 @@ function showRegistryPaths() {
 ## Export command list for external tools
 function exportCommands() {
     local format="${1:-simple}"
-    
+
     initializeRegistry
-    
+
     case "$format" in
         json)
+            loadRegistryMetadata
             echo "["
             local i=0
             while [[ $i -lt ${#ROLL_REGISTRY_COMMANDS[@]} ]]; do
                 local command="${ROLL_REGISTRY_COMMANDS[$i]}"
                 local path="${ROLL_REGISTRY_PATHS[$i]}"
                 local help_path="${ROLL_REGISTRY_HELP_PATHS[$i]}"
+                local source="${ROLL_REGISTRY_SOURCES[$i]}"
                 local category="${ROLL_REGISTRY_CATEGORIES[$i]}"
                 local description="${ROLL_REGISTRY_DESCRIPTIONS[$i]}"
                 local priority="${ROLL_REGISTRY_PRIORITIES[$i]}"
-                
+
                 echo "  {"
-                echo "    \"command\": \"$command\","
-                echo "    \"path\": \"$path\","
-                echo "    \"help_path\": \"$help_path\","
-                echo "    \"category\": \"$category\","
-                echo "    \"description\": \"$description\","
+                echo "    \"command\": \"$(jsonEscape "$command")\","
+                echo "    \"path\": \"$(jsonEscape "$path")\","
+                echo "    \"help_path\": \"$(jsonEscape "$help_path")\","
+                echo "    \"source\": \"$(jsonEscape "$source")\","
+                echo "    \"category\": \"$(jsonEscape "$category")\","
+                echo "    \"description\": \"$(jsonEscape "$description")\","
                 echo "    \"priority\": $priority"
                 if [[ $i -eq $((${#ROLL_REGISTRY_COMMANDS[@]} - 1)) ]]; then
                     echo "  }"
@@ -436,17 +513,19 @@ function exportCommands() {
             echo "]"
             ;;
         csv)
-            echo "command,path,help_path,category,description,priority"
+            loadRegistryMetadata
+            echo "command,path,help_path,source,category,description,priority"
             local i=0
             while [[ $i -lt ${#ROLL_REGISTRY_COMMANDS[@]} ]]; do
                 local command="${ROLL_REGISTRY_COMMANDS[$i]}"
                 local path="${ROLL_REGISTRY_PATHS[$i]}"
                 local help_path="${ROLL_REGISTRY_HELP_PATHS[$i]}"
+                local source="${ROLL_REGISTRY_SOURCES[$i]}"
                 local category="${ROLL_REGISTRY_CATEGORIES[$i]}"
                 local description="${ROLL_REGISTRY_DESCRIPTIONS[$i]}"
                 local priority="${ROLL_REGISTRY_PRIORITIES[$i]}"
-                
-                echo "$command,$path,$help_path,$category,\"$description\",$priority"
+
+                echo "$command,$path,$help_path,$source,$category,\"$description\",$priority"
                 i=$((i + 1))
             done
             ;;

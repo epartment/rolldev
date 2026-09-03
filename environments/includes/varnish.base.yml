@@ -7,7 +7,7 @@ services:
 
   varnish:
     hostname: "${ROLL_ENV_NAME}-varnish"
-    image: ${ROLL_IMAGE_REPOSITORY}/varnish:${VARNISH_VERSION:-6.0}
+    image: ${ROLL_IMAGE_REPOSITORY}/varnish:${VARNISH_VERSION}
     depends_on:
       - nginx
     labels:
@@ -18,3 +18,11 @@ services:
           HostRegexp(`^.+\.${TRAEFIK_DOMAIN}$$`) || Host(`${TRAEFIK_DOMAIN}`)
       - traefik.http.services.${ROLL_ENV_NAME}-varnish.loadbalancer.server.port=80
       - traefik.docker.network=${ROLL_ENV_NAME}_default
+    healthcheck:
+      ## the varnish image ships neither curl nor bash, so probe the running varnishd directly
+      ## instead of the backend it fronts
+      test: ["CMD", "varnishadm", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

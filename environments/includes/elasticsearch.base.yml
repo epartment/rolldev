@@ -1,7 +1,7 @@
 services:
   elasticsearch:
     hostname: "${ROLL_ENV_NAME}-elasticsearch"
-    image: ${ROLL_IMAGE_REPOSITORY}/elasticsearch:${ELASTICSEARCH_VERSION:-8.11}
+    image: ${ROLL_IMAGE_REPOSITORY}/elasticsearch:${ELASTICSEARCH_VERSION}
     labels:
       - traefik.enable=true
       - traefik.http.routers.${ROLL_ENV_NAME}-elasticsearch.tls=true
@@ -12,11 +12,19 @@ services:
       - indices.query.bool.max_clause_count=16384
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms64m -Xmx512m"
+      - "ES_JAVA_OPTS=${ELASTICSEARCH_JAVA_OPTS}"
       - http.cors.enabled=true
       - http.cors.allow-origin=/.*/
     volumes:
       - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      ## a bare port probe is not enough here: the container's fixed heap has historically let the
+      ## process look healthy while it is actually dead, so this hits the cluster-health endpoint
+      test: ["CMD", "curl", "-fs", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
 
 volumes:
   esdata:

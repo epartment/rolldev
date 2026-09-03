@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+## @description: Copy a file, folder, or debug artifact from the project container to the host.
+## @category: utility
+
+ROLL_USAGE=$(cat <<EOF
+\033[33mUsage:\033[0m
+  copyfromcontainer <file-or-folder>
+  copyfromcontainer --all
+  copyfromcontainer --cachegrind [file]
+  copyfromcontainer --traces [file]
+  copyfromcontainer --realpath <file>
+\033[33mOptions:\033[0m
+  --all              Copy the entire project source from the container to the host
+  --realpath          Copy an absolute container path into the project tmp folder
+  --cachegrind [file] Copy a cachegrind profile from php-debug; picks interactively without a file argument
+  --traces [file]     Copy an xdebug trace from php-debug; picks interactively without a file argument
+  -h, --help          Display this help menu
+EOF
+)
