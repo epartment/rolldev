@@ -53,6 +53,55 @@ trap cleanup EXIT
   cd -- "${TMP_DIR}"
   "${ROLL_BIN[@]}" env-init smoketest magento2
   "${ROLL_BIN[@]}" config validate
+
+  # The version overview reads the catalog and the project config only, so it needs no network
+  echo "+ config versions"
+  "${ROLL_BIN[@]}" config versions >/dev/null
+
+  # Setting a version non-interactively must rewrite the pin in place. The registry lookup that
+  # would warn about an unknown tag is best-effort, so this passes with or without network access.
+  echo "+ config version php 8.2"
+  "${ROLL_BIN[@]}" config version php 8.2 >/dev/null 2>&1
+  if ! grep -q '^PHP_VERSION=8.2$' .env.roll; then
+    >&2 echo "FAIL: roll config version did not write PHP_VERSION=8.2"
+    exit 1
+  fi
+  if [[ "$(grep -c '^PHP_VERSION=' .env.roll)" != "1" ]]; then
+    >&2 echo "FAIL: roll config version left more than one PHP_VERSION line"
+    exit 1
+  fi
+
+  # Same again, so the "nothing to change" path is exercised and stays a success
+  "${ROLL_BIN[@]}" config version php 8.2 >/dev/null 2>&1
+
+  # A commented pin is replaced rather than duplicated (magento2's init.env ships one)
+  echo "+ config version opensearch 2.19"
+  "${ROLL_BIN[@]}" config version opensearch 2.19 >/dev/null 2>&1
+  if [[ "$(grep -c '^#*[[:space:]]*OPENSEARCH_VERSION=' .env.roll)" != "1" ]]; then
+    >&2 echo "FAIL: roll config version duplicated the commented OPENSEARCH_VERSION line"
+    exit 1
+  fi
+
+  # With no terminal, the service prompt must fail naming the non-interactive form, and write
+  # nothing - this is the contract automation depends on
+  echo "+ config version (no tty)"
+  if out="$("${ROLL_BIN[@]}" config version 2>&1 </dev/null)"; then
+    >&2 echo "FAIL: roll config version succeeded with no terminal and no arguments"
+    exit 1
+  fi
+  case "${out}" in
+    *"roll config version <service> <version>"*) ;;
+    *)
+      >&2 echo "FAIL: roll config version did not name its non-interactive form"
+      exit 1
+      ;;
+  esac
+
+  echo "+ config version nosuchservice"
+  if "${ROLL_BIN[@]}" config version nosuchservice 1.0 >/dev/null 2>&1; then
+    >&2 echo "FAIL: roll config version accepted an unknown service"
+    exit 1
+  fi
 )
 
 "$(dirname "$0")/test-syntax.sh"

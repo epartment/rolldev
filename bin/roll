@@ -15,6 +15,7 @@ readonly ROLL_DIR="$(
 source "${ROLL_DIR}/utils/core.sh"
 source "${ROLL_DIR}/utils/interact.sh"
 source "${ROLL_DIR}/utils/config.sh"
+source "${ROLL_DIR}/utils/images.sh"
 source "${ROLL_DIR}/utils/registry.sh"
 source "${ROLL_DIR}/utils/env.sh"
 source "${ROLL_DIR}/utils/backup.sh"

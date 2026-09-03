@@ -447,6 +447,115 @@ function setConfigValue() {
     export "$key"="$value"
 }
 
+## The backup path written by the last writeEnvRollValue call, so callers can name it accurately -
+## recomputing a timestamp afterwards can land a second later and report a file that does not exist.
+ROLL_CONFIG_WRITE_BACKUP=""
+
+## writeEnvRollValue <config file> <key> <value>
+##
+## Persist KEY=value in a .env.roll, after taking a timestamped backup.
+##
+## Three cases, in this order of preference:
+##   1. an active `KEY=` line is rewritten in place, so the value keeps its position in the file and
+##      whatever comment sits above it;
+##   2. otherwise a commented `#KEY=` line is replaced, because the environment type templates ship
+##      keys that way (`#OPENSEARCH_VERSION=2.19` in magento2's init.env) and appending a second
+##      line would leave the file carrying two answers for one key;
+##   3. otherwise the line is appended.
+## Any further active line for the same key is dropped, since it would override the one just
+## written - loadConfigFromFile takes the last occurrence.
+##
+## Done with a read/write loop rather than `sed -i`: the value goes through no pattern expansion, so
+## one containing `/` or `&` cannot corrupt the file, and there is no BSD/GNU `-i` difference to
+## work around.
+function writeEnvRollValue() {
+    local config_file="$1" key="$2" value="$3"
+    local line="" tmp_file="" target=-1 i=0
+    local lines=()
+
+    if [[ ! -f "${config_file}" ]]; then
+        error "Configuration file not found: ${config_file}"
+        return 1
+    fi
+
+    ## The key is interpolated into the line-matching regex below, so anything that is not a plain
+    ## variable name would match lines it has no business matching
+    if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        error "\"${key}\" is not a valid configuration key name."
+        return 1
+    fi
+
+    ## One backup per roll invocation, not per write. A command that writes twice - the database
+    ## distribution and then its version - would otherwise overwrite the pristine backup with the
+    ## half-changed file, since both writes land in the same second and so produce the same name.
+    ## The variable is process-local, so a value naming a backup of THIS file means the backup for
+    ## this invocation has already been taken.
+    if [[ "${ROLL_CONFIG_WRITE_BACKUP}" != "${config_file}.backup."* ]] \
+        || [[ ! -f "${ROLL_CONFIG_WRITE_BACKUP}" ]]
+    then
+        ROLL_CONFIG_WRITE_BACKUP="${config_file}.backup.$(date +%Y%m%d_%H%M%S)"
+        if ! cp -- "${config_file}" "${ROLL_CONFIG_WRITE_BACKUP}"; then
+            error "Could not write a backup to ${ROLL_CONFIG_WRITE_BACKUP}"
+            return 1
+        fi
+    fi
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        lines[${#lines[@]}]="${line}"
+    done < "${config_file}"
+
+    while [[ ${i} -lt ${#lines[@]} ]]; do
+        if [[ "${lines[$i]}" =~ ^[[:space:]]*${key}= ]]; then
+            target=${i}
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    if [[ ${target} -lt 0 ]]; then
+        i=0
+        while [[ ${i} -lt ${#lines[@]} ]]; do
+            if [[ "${lines[$i]}" =~ ^[[:space:]]*#[[:space:]]*${key}= ]]; then
+                target=${i}
+                break
+            fi
+            i=$((i + 1))
+        done
+    fi
+
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/roll-env-roll.XXXXXX")"
+
+    ## One redirect around the whole loop rather than one append per line. The info below still
+    ## reaches the terminal because the messaging helpers write to stderr.
+    {
+        i=0
+        while [[ ${i} -lt ${#lines[@]} ]]; do
+            if [[ ${i} -eq ${target} ]]; then
+                printf '%s=%s\n' "${key}" "${value}"
+            elif [[ "${lines[$i]}" =~ ^[[:space:]]*${key}= ]]; then
+                info "Dropped a later duplicate ${key} line, which would have overridden this one"
+            else
+                printf '%s\n' "${lines[$i]}"
+            fi
+            i=$((i + 1))
+        done
+
+        if [[ ${target} -lt 0 ]]; then
+            printf '%s=%s\n' "${key}" "${value}"
+        fi
+    } > "${tmp_file}"
+
+    ## cp rather than mv: the destination keeps its inode, owner and permissions
+    if ! cp -- "${tmp_file}" "${config_file}"; then
+        error "Could not write ${config_file}; its previous content is in ${ROLL_CONFIG_WRITE_BACKUP}"
+        rm -f -- "${tmp_file}"
+        return 1
+    fi
+
+    rm -f -- "${tmp_file}"
+    return 0
+}
+
 ## Apply an environment-type default. Unlike setConfigDefault, which fills in the schema literal,
 ## this expresses "what this environment type needs unless the project said otherwise", so it must
 ## run BEFORE the schema loop and must never override a value the user actually wrote in

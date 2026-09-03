@@ -9,7 +9,41 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
-## Unreleased
+## Unreleased — 0.8.1
+
+### Added
+
+- **`roll config version` — change a service version interactively.** Prompts for the service, then
+  for one of the versions that service's image actually has, and writes the pin into `.env.roll`
+  after taking a timestamped backup. The version list is read from the registry the environment
+  pulls from (`$ROLL_IMAGE_REPOSITORY`, `ghcr.io/epartment/roll` by default) over the Docker
+  Registry v2 API and cached for an hour, so it cannot drift from what is publishable. Supplying
+  both arguments (`roll config version php 8.3`) skips the prompts, and with no terminal the prompt
+  fails naming that form rather than hanging.
+- **`roll config versions`** — the version this project pins for every service, with the key that
+  holds it and whether the service is enabled. With a service name it lists that service's
+  published versions, one per line on stdout, for scripting.
+
+### Changed
+
+- **`roll config set` no longer edits `.env.roll` with `sed`.** Both it and the new version picker
+  go through one writer, which rewrites an existing pin in place, replaces a commented-out one
+  rather than appending a second line, and passes the value through no pattern expansion — so a
+  value containing `/` or `&` is written literally instead of corrupting the line. The reported
+  backup path is now the file that was actually created; it was recomputed from a second `date`
+  call, so it named a non-existent path whenever the two landed in different seconds.
+
+- **`roll --help` no longer prints the ASCII-art banner.** The usage output now opens on the
+  version line.
+
+### Fixed
+
+- **`roll --help` and `roll usage` printed the whole help twice.** `commands/usage.help` echoed
+  `ROLL_USAGE` itself and `commands/usage.cmd` echoed it again after sourcing the file. A `.help`
+  file only defines `ROLL_USAGE`; rendering belongs to `usage.cmd`. The same stray echo was removed
+  from `commands/magento2-init.help`.
+
+## [0.8.0](https://github.com/epartment/rolldev/releases/tag/0.8.0) — 2026-09-03
 
 The 0.8.0 development work. Two changes need reading before upgrading — unpinned service versions
 now warn (and become an error in 0.9.0), and gum becomes a dependency. Both are covered in

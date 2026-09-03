@@ -87,9 +87,68 @@ roll config fix-pins     # writes PHP_VERSION=8.3 into .env.roll
 `roll env-init` seeds `.env.roll` from the environment type's `init.env`, which pins everything that
 type enables. Projects created with 0.8.0 or later start out fully pinned and never see the warning.
 
+## Seeing what you pin today
+
+```bash
+roll config versions
+```
+
+```
+  SERVICE        KEY                        VERSION      STATUS
+  php            PHP_VERSION                8.3          enabled
+  node           NODE_VERSION               22           enabled
+  mariadb        DB_DISTRIBUTION_VERSION    10.4         enabled
+  mysql          DB_DISTRIBUTION_VERSION    <unpinned>   not selected (DB_DISTRIBUTION=mariadb)
+  elasticsearch  ELASTICSEARCH_VERSION      8.11         enabled
+  opensearch     OPENSEARCH_VERSION         <unpinned>   disabled (ROLL_OPENSEARCH=0)
+  ...
+```
+
+One row per service RollDev can run: the key that holds its version, the version this project
+pins, and whether the service is switched on. An `<unpinned>` row for an enabled service is what
+`check-pins` reports.
+
 ## Upgrading a version deliberately
 
-Edit the value in `.env.roll` and bring the environment back up:
+```bash
+roll config version
+```
+
+This asks which service to change, then offers the versions that service's image actually has, and
+writes your choice into `.env.roll` after taking a timestamped backup. The version list is read
+from the registry RollDev pulls from, so it is never a list someone has to keep up to date — a
+version that exists is offered, and one that does not is not.
+
+Skip either prompt by naming the service, or the service and the version:
+
+```bash
+roll config version php              # choose from the PHP versions the image is built for
+roll config version php 8.3          # set PHP_VERSION=8.3 without prompting
+```
+
+To see the choices without changing anything:
+
+```bash
+roll config versions php
+```
+
+The list comes back newest first, one version per line, so it can be piped. It is cached for an
+hour per image; `ROLL_TAG_CACHE_TTL=0 roll config versions php` refetches.
+
+Three services need a word of explanation:
+
+- **Node** ships inside the PHP image, as a `-nodeNN` suffix on its tag, so the Node versions on
+  offer are the ones built for the PHP version you have pinned. `NODE_VERSION=0` is offered too,
+  and means an image with no Node at all.
+- **The database** has one version key for two engines. Picking `mysql` on a MariaDB project (or
+  the reverse) switches `DB_DISTRIBUTION` as well, and asks first — the existing database volume
+  was written by the other engine and will not be readable. Dump the database, recreate the volume
+  with `roll env down -v`, then import it again.
+- **Selenium** is the one image not published under `$ROLL_IMAGE_REPOSITORY`, and Docker Hub's
+  `selenium/standalone-chrome` carries thousands of tags in several shapes, so RollDev asks you to
+  type the version rather than offering a list.
+
+Either way the command only edits `.env.roll`. Bring the environment back up to apply it:
 
 ```bash
 roll env down
@@ -99,3 +158,5 @@ roll env up
 Changing a database or search-engine version usually means the existing data volume was written by
 the old version. Check that engine's upgrade path first — RollDev only selects the image, it does
 not migrate data.
+
+You can still edit `.env.roll` by hand; nothing about the file has changed.

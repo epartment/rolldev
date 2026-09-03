@@ -142,8 +142,9 @@ environment can produce a fragment set that does not match either copy.
 
 ### Dispatch
 
-`bin/roll` is the single entry point. It sources four libraries in a fixed order — `utils/core.sh`,
-`utils/config.sh`, `utils/registry.sh`, `utils/env.sh` — verifies Docker and the compose version, then
+`bin/roll` is the single entry point. It sources its libraries in a fixed order — `utils/core.sh`,
+`utils/interact.sh`, `utils/config.sh`, `utils/images.sh`, `utils/registry.sh`, `utils/env.sh`,
+`utils/backup.sh` — verifies Docker and the compose version, then
 resolves the first argument through the command registry and **sources** the matching `.cmd` file
 (`bin/roll:98`). Sourcing rather than executing is deliberate: every command runs in the same shell
 and can use all globals and helper functions without re-deriving them.
@@ -284,7 +285,8 @@ responsibility is still describable.
 |---|---|---|---|
 | `bin/roll` | 98 lines | Entry point, dispatch, argument parsing | **Coherent** |
 | `utils/core.sh` | 184 lines | Messaging helpers, array/version utilities, network peering | **Coherent** — the three box-drawing functions are one-line wrappers around a shared `box` helper |
-| `utils/config.sh` | 606 lines | Config schema, loading, validation, post-processing | **Coherent**; sole owner of configuration defaults |
+| `utils/config.sh` | 946 lines | Config schema, loading, validation, post-processing, `.env.roll` writes | **Coherent**; sole owner of configuration defaults |
+| `utils/images.sh` | 375 lines | Service catalog (version key, toggle and image per service) and image-tag discovery from the registry | **Coherent** |
 | `utils/registry.sh` | 461 lines | Command discovery and priority resolution | **Oversized for what it delivers** — ~200 lines serve `roll registry`'s reporting subcommands; the metadata layer they report on is a stub (**M6**) |
 | `utils/env.sh` | 108 lines | Env path location, partial precedence, env-type validation | **Coherent** |
 | `utils/install.sh` | 63 lines | Host install assertion, SSH config | **Coherent** |
@@ -477,6 +479,18 @@ Inspect the resolved configuration for the current project:
 roll config show
 ```
 
+See which version this project pins for every service, and whether that service is enabled:
+
+```bash
+roll config versions
+```
+
+Change one of them, picking from the versions the image actually has:
+
+```bash
+roll config version
+```
+
 List every command the registry resolved, including user and third-party packs:
 
 ```bash
@@ -513,6 +527,8 @@ exists and where it lives.
 | `roll env up --wait` | Compose native, made meaningful by the healthchecks in `environments/includes/*.base.yml` |
 | `roll env doctor` | `commands/doctor.cmd` |
 | `roll config check-pins` / `fix-pins` | `commands/config.cmd` |
+| `roll config versions [service]` — pinned versions, or a service's published versions one per line on stdout | `commands/config.cmd`, `utils/images.sh` |
+| `roll config version <service> <version>` — set a pin without prompting | `commands/config.cmd` |
 | Flag-first prompts | `utils/interact.sh` |
 
 Two rules bind anything added here:
@@ -562,6 +578,9 @@ These are enforced by review rather than by tooling, except where noted.
   up with no central list to edit. If it must accept arbitrary pass-through flags, add it to
   `ROLL_CMD_ANYARGS` in `bin/roll:43`. Add it to `commands/usage.help` as well — that file is
   maintained by hand for visibility.
+- **Help files define, they do not print.** A `commands/*.help` file only assigns `ROLL_USAGE`;
+  `commands/usage.cmd` sources it and does the single `echo -e`. A `.help` file that echoes
+  `ROLL_USAGE` itself makes the help render twice.
 - **Adding a service:** add the fragment(s) under `environments/includes/` (plus per-type overrides),
   wire a `ROLL_<SERVICE>` toggle into the assembly block in `commands/env.cmd`, and register the
   variable and its default in `initConfigSchema` (`utils/config.sh:58`). Do not rely on a
