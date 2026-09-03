@@ -586,27 +586,7 @@ rather than defects, and of the [boundary findings](#boundary-findings) above.
 
 ### High
 
-**H1. A restored search-engine volume is unwritable, so Elasticsearch cannot start** —
-`utils/backup.sh` (`restoreVolume`)
-
-- *What:* After `roll restore`, the Elasticsearch data volume comes back with its **root directory
-  owned by uid 0, mode 755**, while the image runs as uid 1000. The service then dies at boot with
-  `AccessDeniedException: /usr/share/elasticsearch/data/.es_temp_file` and
-  `failed to test writes in data directory ... write permission is required`. Entries *inside* the
-  volume keep their original ownership (`_state` is uid 1000), so only the top-level directory
-  created during extraction is wrong.
-- *Verified:* full round trip on a throwaway magento2 project — write a marker row, `roll backup`,
-  drop the table, `roll restore`, `roll env up --wait`. The database restores correctly and the
-  marker comes back; Elasticsearch exits 1 every time.
-- *Why it matters:* the restore reports success, and before this release `roll env up` also
-  returned 0, so the environment looked fine and only failed later when something searched. It is
-  `env up --wait` plus the new healthchecks that make it visible at all — `--wait` correctly exits
-  1 here, which is how this was found.
-- *Not caused by the shared-library extraction:* `restoreVolume` moved verbatim, and the same
-  failure reproduces on the pre-refactor code.
-- *Suggested fix:* after extracting a volume, restore the ownership the service expects rather than
-  leaving the extraction root as root. The uid differs per service, so it belongs alongside
-  `getVolumeMapping` as a per-service property rather than as a blanket `chown`.
+None open.
 
 ### Medium
 

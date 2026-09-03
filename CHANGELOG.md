@@ -73,6 +73,14 @@ now warn (and become an error in 0.9.0), and gum becomes a dependency. Both are 
 - **`magento2` environments came up without Varnish, a search engine or RabbitMQ** unless the
   toggles were spelled out. The environment-type defaults ran after the schema defaults had already
   filled those variables in, so every `${VAR:-1}` deriving them was unreachable.
+- **A restored volume came back owned by root, so Elasticsearch could not start.** `roll restore`
+  creates each volume with `docker volume create` and then extracts into it as root with
+  `--strip-components=1`, which discards the archive's top-level entry — the only one carrying the
+  data directory's own ownership. Docker's copy-up did not compensate, because it fires only for an
+  empty volume and the restore populates this one before any service mounts it. Services that start
+  as root chown their data directory themselves; Elasticsearch and OpenSearch run as uid 1000 and
+  died at boot with `AccessDeniedException: .../data/.es_temp_file` while the restore reported
+  success. The owner is now derived from the restored content after each extraction.
 - `roll db` works against MariaDB 11, which ships only `mariadb-dump`/`mariadb`.
 - `roll registry categories` no longer dies on macOS — bash 4 syntax under a bash 3.2 shell.
 - `roll backup --help` and `roll status --help` no longer exit 2 on macOS. bash 3.2 mis-parses a lone

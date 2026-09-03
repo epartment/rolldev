@@ -400,6 +400,20 @@ function restoreVolume() {
     
     # Restore the volume data with decryption if needed
     local temp_container="${ROLL_ENV_NAME}_restore_${service_name}_$$"
+
+    # `docker volume create` above leaves the volume root owned root:root, and the extraction runs
+    # as root with `--strip-components=1`, discarding the archive's top-level entry - the only one
+    # carrying the data directory's own ownership. Copy-up does not compensate: it fires only for an
+    # EMPTY volume, and this one is populated before any service mounts it. Containers that start as
+    # root chown their data directory themselves, but Elasticsearch and OpenSearch run as uid 1000
+    # and then die at boot with `AccessDeniedException: .../data/.es_temp_file`.
+    #
+    # Owner comes from the restored content, not a per-service table: it is what that service's own
+    # volume held, so it survives an image changing uid and covers `getVolumeMapping`'s generic
+    # `*)` branch. No chmod - 0755 already grants the new owner rwx, and the archive's real mode is
+    # gone with its top-level entry anyway. Empty archive: no repair needed, copy-up still applies.
+    # The braces matter - a bare `a; b` list would let a failed extraction report success.
+    local fix_volume_root='{ root_ref=$(find /data -mindepth 1 -maxdepth 1 -print -quit); [ -z "$root_ref" ] || chown "$(stat -c %u:%g "$root_ref")" /data; }'
     
     if [[ $is_encrypted == true ]]; then
         # Decrypt and decompress pipeline - use ubuntu and original tar approach with strip components
@@ -412,7 +426,7 @@ function restoreVolume() {
             *.tar.lz4.gpg) tar_cmd="lz4 -d - | tar -xf -" ;;
         esac
         
-        if echo "$RESTORE_DECRYPT" | gpg --batch --yes --quiet --passphrase-fd 0 --decrypt "$backup_file" | docker run --rm --name "$temp_container" --mount source="$volume_name",target=/data -i ubuntu bash -c "cd /data && $tar_cmd --strip-components=1" 2>/dev/null; then
+        if echo "$RESTORE_DECRYPT" | gpg --batch --yes --quiet --passphrase-fd 0 --decrypt "$backup_file" | docker run --rm --name "$temp_container" --mount source="$volume_name",target=/data -i ubuntu bash -c "cd /data && $tar_cmd --strip-components=1 && $fix_volume_root" 2>/dev/null; then
             logMessage SUCCESS "Successfully restored and decrypted $service_name volume"
             return 0
         else
@@ -428,7 +442,7 @@ function restoreVolume() {
                     --mount source="$volume_name",target=/data \
                     -v "$(dirname "$backup_file")":/backup \
                     ubuntu bash \
-                    -c "cd /data && tar -xzf /backup/$(basename "$backup_file") --strip-components=1" 2>/dev/null; then
+                    -c "cd /data && tar -xzf /backup/$(basename "$backup_file") --strip-components=1 && $fix_volume_root" 2>/dev/null; then
                     
                     logMessage SUCCESS "Successfully restored $service_name volume"
                     return 0
@@ -442,7 +456,7 @@ function restoreVolume() {
                     --mount source="$volume_name",target=/data \
                     -v "$(dirname "$backup_file")":/backup \
                     ubuntu bash \
-                    -c "cd /data && tar -xJf /backup/$(basename "$backup_file") --strip-components=1" 2>/dev/null; then
+                    -c "cd /data && tar -xJf /backup/$(basename "$backup_file") --strip-components=1 && $fix_volume_root" 2>/dev/null; then
                     
                     logMessage SUCCESS "Successfully restored $service_name volume"
                     return 0
@@ -456,7 +470,7 @@ function restoreVolume() {
                     --mount source="$volume_name",target=/data \
                     -v "$(dirname "$backup_file")":/backup \
                     ubuntu bash \
-                    -c "cd /data && lz4 -d /backup/$(basename "$backup_file") - | tar -xf - --strip-components=1" 2>/dev/null; then
+                    -c "cd /data && lz4 -d /backup/$(basename "$backup_file") - | tar -xf - --strip-components=1 && $fix_volume_root" 2>/dev/null; then
                     
                     logMessage SUCCESS "Successfully restored $service_name volume"
                     return 0
@@ -470,7 +484,7 @@ function restoreVolume() {
                     --mount source="$volume_name",target=/data \
                     -v "$(dirname "$backup_file")":/backup \
                     ubuntu bash \
-                    -c "cd /data && tar -xf /backup/$(basename "$backup_file") --strip-components=1" 2>/dev/null; then
+                    -c "cd /data && tar -xf /backup/$(basename "$backup_file") --strip-components=1 && $fix_volume_root" 2>/dev/null; then
                     
                     logMessage SUCCESS "Successfully restored $service_name volume"
                     return 0
