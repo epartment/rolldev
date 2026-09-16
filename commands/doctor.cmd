@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 [[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
 
-## `doctor` is on roll's ROLL_CMD_ANYARGS list (needed so --format reaches this script - also true
-## when reached via `roll env doctor`, since `env` is already anyargs), so roll's own parser stops
-## at the first dash-prefixed argument and leaves it in "$@". Parse flags from "$@", not
-## ROLL_PARAMS.
+## `doctor` is on roll's ROLL_CMD_ANYARGS list (needed so --format and --ignore-services reach this
+## script - also true when reached via `roll env doctor`, since `env` is already anyargs), so
+## roll's own parser stops at the first dash-prefixed argument and leaves it in "$@". Parse flags
+## from "$@", not ROLL_PARAMS.
 DOCTOR_FORMAT="human"
+DOCTOR_IGNORE_SERVICES=""
 doctorArgs=("$@")
 i=0
 while [[ $i -lt ${#doctorArgs[@]} ]]; do
@@ -22,6 +23,15 @@ while [[ $i -lt ${#doctorArgs[@]} ]]; do
             i=$((i + 1))
             DOCTOR_FORMAT="${doctorArgs[$i]:-}"
             ;;
+        --ignore-services=*)
+            ## Appended rather than assigned, so repeating the flag adds to the list instead of
+            ## replacing it - a caller composing the list from several sources needs that.
+            DOCTOR_IGNORE_SERVICES="${DOCTOR_IGNORE_SERVICES},${doctorArgs[$i]#*=}"
+            ;;
+        --ignore-services)
+            i=$((i + 1))
+            DOCTOR_IGNORE_SERVICES="${DOCTOR_IGNORE_SERVICES},${doctorArgs[$i]:-}"
+            ;;
         *)
             fatal "Unsupported argument ${doctorArgs[$i]}"
             ;;
@@ -33,17 +43,49 @@ if [[ "${DOCTOR_FORMAT}" != "human" && "${DOCTOR_FORMAT}" != "json" ]]; then
     fatal "Unsupported --format value '${DOCTOR_FORMAT}' (expected: human, json)"
 fi
 
+## Whitespace is stripped so "--ignore-services=nginx, elasticsearch" behaves like the unspaced
+## form. The leading and duplicate commas the append above can leave are not normalised away,
+## because the membership test below anchors on a comma either side of the needle and does not
+## care - with the one exception it guards explicitly: an EMPTY needle.
+DOCTOR_IGNORE_SERVICES="${DOCTOR_IGNORE_SERVICES// /}"
+
+## doctorServiceIgnored <service-name>
+## True when the caller asked for this service's checks to be skipped. Matches the compose/roll
+## service name, so one name covers every check belonging to it (a container's health, a search
+## engine's cluster health AND its write probe). A name that matches nothing in this environment
+## is not an error: one fixed invocation has to work across projects that run different services.
+function doctorServiceIgnored() {
+    local needle="$1"
+    ## An empty needle must never match. The list can legitimately contain an empty element - a
+    ## trailing comma, or the leading one the append above leaves - and the comma-anchored test
+    ## below would otherwise report every unnamed check as deliberately ignored.
+    [[ -z "${needle}" ]] && return 1
+    [[ -z "${DOCTOR_IGNORE_SERVICES}" ]] && return 1
+    case ",${DOCTOR_IGNORE_SERVICES}," in
+        *",${needle},"*) return 0 ;;
+    esac
+    return 1
+}
+
 ## Per-check results, in the order the checks run. Rendered as a table/box for human output or a
 ## {check, ok, detail} array for --format json.
 CHECK_NAMES=()
 CHECK_OK=()
 CHECK_DETAILS=()
 
-## recordCheck <name> <0|1> <detail>
+## recordCheck <name> <0|1|skip> <detail>
+## `skip` is a third state, not a pass: a skipped check never sets DOCTOR_ANY_FAILED, but it is
+## still listed, so the report says what was not checked instead of quietly shrinking.
 function recordCheck() {
     CHECK_NAMES+=("$1")
     CHECK_OK+=("$2")
     CHECK_DETAILS+=("$3")
+    return 0
+}
+
+## recordIgnoredCheck <name> <service>
+function recordIgnoredCheck() {
+    recordCheck "$1" "skip" "Skipped: $2 is in --ignore-services."
     return 0
 }
 
@@ -65,8 +107,12 @@ function renderDoctorReport() {
         idx=0
         while [[ $idx -lt ${#CHECK_NAMES[@]} ]]; do
             [[ $idx -gt 0 ]] && out+=","
+            ## A skipped check reports "ok": null rather than true - a consumer must be able to
+            ## tell "this passed" from "this was not looked at". Existing consumers testing for
+            ## `false` are unaffected, and nothing emits null unless --ignore-services is used.
             local okWord="false"
             [[ "${CHECK_OK[$idx]}" == "1" ]] && okWord="true"
+            [[ "${CHECK_OK[$idx]}" == "skip" ]] && okWord="null"
             out+="{\"check\":\"$(jsonEscape "${CHECK_NAMES[$idx]}")\","
             out+="\"ok\":${okWord},"
             out+="\"detail\":\"$(jsonEscape "${CHECK_DETAILS[$idx]}")\"}"
@@ -83,14 +129,28 @@ function renderDoctorReport() {
         while [[ $idx -lt ${#CHECK_NAMES[@]} ]]; do
             local mark="FAIL"
             [[ "${CHECK_OK[$idx]}" == "1" ]] && mark="OK  "
+            [[ "${CHECK_OK[$idx]}" == "skip" ]] && mark="SKIP"
             lines+=("$(printf '%s  %-24s %s' "${mark}" "${CHECK_NAMES[$idx]}" "${CHECK_DETAILS[$idx]}")")
             idx=$((idx + 1))
         done
 
+        ## The footer names the skips rather than claiming a clean bill of health: "All checks
+        ## passed" after --ignore-services silenced a failing service would be the one line a
+        ## reader takes at face value.
+        local skipped=0
+        idx=0
+        while [[ $idx -lt ${#CHECK_OK[@]} ]]; do
+            [[ "${CHECK_OK[$idx]}" == "skip" ]] && skipped=$((skipped + 1))
+            idx=$((idx + 1))
+        done
+
+        local skipNote=""
+        [[ ${skipped} -gt 0 ]] && skipNote=" (${skipped} skipped via --ignore-services)"
+
         if [[ ${DOCTOR_ANY_FAILED} -eq 0 ]]; then
-            styledBox 2 "roll env doctor: ${ROLL_ENV_NAME:-environment}" "" "${lines[@]}" "" "All checks passed."
+            styledBox 2 "roll env doctor: ${ROLL_ENV_NAME:-environment}" "" "${lines[@]}" "" "All checks passed${skipNote}."
         else
-            styledBox 1 "roll env doctor: ${ROLL_ENV_NAME:-environment}" "" "${lines[@]}" "" "One or more checks failed."
+            styledBox 1 "roll env doctor: ${ROLL_ENV_NAME:-environment}" "" "${lines[@]}" "" "One or more checks failed${skipNote}."
         fi
     fi
 
@@ -173,7 +233,9 @@ function checkContainerHealth() {
             hIdx=$((hIdx + 1))
         done
 
-        if [[ "${containerStates[$idx]}" != "running" ]]; then
+        if doctorServiceIgnored "${containerServices[$idx]}"; then
+            recordIgnoredCheck "container:${containerServices[$idx]}" "${containerServices[$idx]}"
+        elif [[ "${containerStates[$idx]}" != "running" ]]; then
             recordCheck "container:${containerServices[$idx]}" 0 "${containerNames[$idx]} is ${containerStates[$idx]}, not running."
         elif [[ "${health}" == "healthy" ]]; then
             recordCheck "container:${containerServices[$idx]}" 1 "${containerNames[$idx]} is running and healthy."
@@ -199,6 +261,12 @@ checkContainerHealth
 ## the port directly to tell "free" (not started yet) apart from "occupied by something else".
 function checkGlobalPort() {
     local port="$1" proto="$2" containerName="$3" label="$4"
+
+    if doctorServiceIgnored "${containerName}"; then
+        recordIgnoredCheck "port-${port}" "${containerName}"
+        return 0
+    fi
+
     local state=""
     state="$(docker ps --filter "name=^${containerName}$" --format '{{.State}}' 2>/dev/null)" || true
 
@@ -230,13 +298,19 @@ checkGlobalPort 443 tcp traefik "Traefik HTTPS"
 checkGlobalPort 53 udp dnsmasq "dnsmasq DNS"
 
 if [[ "${ROLL_BROWSERSYNC:-0}" == "1" && "${ROLL_PUBLISH_PORTS:-1}" == "1" ]]; then
-    browsersyncContainer="${ROLL_ENV_NAME}-browsersync-1"
-    browsersyncState=""
-    browsersyncState="$(docker ps --filter "name=^${browsersyncContainer}$" --format '{{.State}}' 2>/dev/null)" || true
-    if [[ "${browsersyncState}" == "running" ]]; then
-        recordCheck "port-browsersync" 1 "BrowserSync ports are bound by the running ${browsersyncContainer} container."
+    ## Nested inside the enablement test, not beside it, so an ignored service name only produces
+    ## a SKIP line for a check this environment would actually have run.
+    if doctorServiceIgnored "browsersync"; then
+        recordIgnoredCheck "port-browsersync" "browsersync"
     else
-        recordCheck "port-browsersync" 1 "BrowserSync is enabled but ${browsersyncContainer} is not running yet; ports are assigned at 'roll env up'."
+        browsersyncContainer="${ROLL_ENV_NAME}-browsersync-1"
+        browsersyncState=""
+        browsersyncState="$(docker ps --filter "name=^${browsersyncContainer}$" --format '{{.State}}' 2>/dev/null)" || true
+        if [[ "${browsersyncState}" == "running" ]]; then
+            recordCheck "port-browsersync" 1 "BrowserSync ports are bound by the running ${browsersyncContainer} container."
+        else
+            recordCheck "port-browsersync" 1 "BrowserSync is enabled but ${browsersyncContainer} is not running yet; ports are assigned at 'roll env up'."
+        fi
     fi
 fi
 
@@ -248,6 +322,15 @@ fi
 ## labels), so this needs no `roll env exec`.
 function checkSearchEngine() {
     local engine="$1"
+
+    ## Returns before the probes, not after: each curl carries a 5s timeout, so an unreachable
+    ## engine the caller already knows about would otherwise cost 10s per engine to reach a
+    ## result it asked to have ignored.
+    if doctorServiceIgnored "${engine}"; then
+        recordIgnoredCheck "search-engine:${engine}" "${engine}"
+        return 0
+    fi
+
     local engineLabel=""
     engineLabel="$(capitalize "${engine}")"
     local baseUrl="https://${engine}.${TRAEFIK_DOMAIN}"

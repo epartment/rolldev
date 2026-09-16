@@ -7,8 +7,10 @@ ROLL_USAGE=$(cat <<EOF
 \033[33mUsage:\033[0m
   roll doctor
   roll doctor --format json
+  roll doctor --ignore-services=nginx,elasticsearch
   roll env doctor
   roll env doctor --format json
+  roll env doctor --ignore-services=nginx,elasticsearch
 
 \033[33mDescription:\033[0m
   Checks whether the current project environment is actually fit to run, and reports one line per
@@ -30,13 +32,28 @@ ROLL_USAGE=$(cat <<EOF
   - disk             the Docker data root has at least 5GB free
 
 \033[33mExit status:\033[0m
-  0  every check passed
+  0  every check passed (skipped checks do not fail the run)
   1  one or more checks failed (see the detail of the failing check)
 
 \033[33mOptions:\033[0m
   -h, --help          Display this help menu
   --format human      Human-readable report (default)
   --format json       One JSON object with a "checks" array of {check, ok, detail} and an
-                       overall "ok"; no ANSI escapes and no credentials
+                       overall "ok"; no ANSI escapes and no credentials. A skipped check
+                       reports "ok": null so it cannot be mistaken for a pass
+  --ignore-services=<a,b>
+                      Skip every check belonging to these services. Meant for a host where a
+                       check cannot apply, not for silencing a real problem. Takes compose/roll
+                       service names (nginx, elasticsearch, opensearch, traefik, dnsmasq,
+                       browsersync, ...); one name covers every check for that service, so
+                       "elasticsearch" skips the cluster health probe AND the write probe.
+                       Skipped checks are still listed, as SKIP, and never fail the run. A name
+                       that matches nothing in this environment is not an error, so one fixed
+                       invocation works across projects running different services. Repeat the
+                       flag to add to the list.
+                       Example: a headless build host runs no traefik, so the search-engine
+                       probe (which goes through traefik) cannot answer there, and nginx stays
+                       unhealthy until the application is installed:
+                         roll env doctor --ignore-services=nginx,elasticsearch,opensearch
 EOF
 )

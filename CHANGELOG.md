@@ -9,7 +9,23 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
-## Unreleased — 0.8.1
+## [0.8.2](https://github.com/epartment/rolldev/releases/tag/0.8.2) — 2026-09-16
+
+### Added
+
+- **`roll env doctor --ignore-services=<a,b>`** — skip every check belonging to the named
+  compose/roll services, for a host where a check cannot apply rather than to silence a real
+  problem. One name covers all of that service's checks, so `elasticsearch` skips both the cluster
+  health probe and the write probe. Skipped checks are still listed, as `SKIP` (`"ok": null` in
+  `--format json`, so a consumer can tell a pass from something not looked at), and never fail the
+  run; the human footer says how many were skipped. A name that matches nothing in the environment
+  is not an error, so one fixed invocation works across projects running different services.
+  Without it, doctor cannot be used unattended on a headless build host: the search engine is
+  probed through traefik on the project domain, which such a host does not run, and nginx fails its
+  healthcheck until the application has a page to serve — neither says anything about whether the
+  environment is fit to build.
+
+## [0.8.1](https://github.com/epartment/rolldev/releases/tag/0.8.1) — 2026-09-03
 
 ### Added
 

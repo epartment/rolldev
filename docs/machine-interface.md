@@ -46,10 +46,27 @@ roll status --format json | jq -r '.projects[].name'
 {
   "ok": true,
   "checks": [
-    {"check": "search-engine-write:opensearch", "ok": true, "detail": "..."}
+    {"check": "search-engine-write:opensearch", "ok": true, "detail": "..."},
+    {"check": "container:nginx", "ok": null, "detail": "Skipped: nginx is in --ignore-services."}
   ]
 }
 ```
+
+A check reports `"ok": null` when it was skipped via `--ignore-services`, so a caller can tell
+"passed" from "not looked at". A skipped check never sets the overall `ok` to `false`. Nothing
+emits `null` unless that flag is used, and a filter on `.ok == false` is unaffected either way.
+
+`--ignore-services=<a,b>` takes compose/roll service names and skips every check belonging to
+them — use it where a check cannot apply rather than to silence a real problem. A headless build
+host, for instance, runs no traefik, and doctor probes the search engine through traefik on the
+project domain, so the probe can never answer there:
+
+```bash
+roll env doctor --format json --ignore-services=nginx,elasticsearch,opensearch
+```
+
+A name that matches nothing in the environment is not an error, so one fixed invocation can serve
+projects that run different services.
 
 `registry list` returns `command`, `category`, `description`, `priority` and `source`. Priority is
 the registry search tier — project `.roll/commands` (1), `~/.roll/commands` (2), `~/.roll/reclu` (3),
