@@ -76,6 +76,13 @@ function watchTheme() {
 function buildAll() {
     local theme_dir=""
 
+    ## Both lists empty means every loop below is a no-op, so `roll theme all` would print not one
+    ## line and exit 0 - a project with no frontend build at all looking exactly like a successful
+    ## build. The interactive branch already refuses that case; this keeps `all` consistent with it.
+    if (( ${#INSTALL_THEMES[@]} == 0 && ${#AVAILABLE_THEMES[@]} == 0 )); then
+        fatal "No themes found - no Gulpfile.js and no theme package.json under ${THEME_ROOT}. Nothing was built."
+    fi
+
     for theme_dir in "${INSTALL_THEMES[@]}"; do
         SELECTED_THEME="${theme_dir}"
         installTheme

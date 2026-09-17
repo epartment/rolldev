@@ -17,7 +17,9 @@ ROLL_USAGE=$(cat <<EOF
   whether to build or watch. On more than one theme, or when no action is given, an interactive
   terminal is required; supply the theme and action directly to run non-interactively.
 
-  \033[32mall\033[0m builds every discovered theme.
+  \033[32mall\033[0m builds every discovered theme. When discovery finds neither a Gulpfile.js
+  nor a theme package.json it exits 1 reporting that no themes were found, rather than
+  returning silently as if a build had succeeded.
 
 \033[33mExamples:\033[0m
   roll theme

@@ -9,6 +9,24 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
+## [0.8.3](https://github.com/epartment/rolldev/releases/tag/0.8.3) — 2026-09-17
+
+### Changed
+
+- **`pull` joins `ROLL_CMD_ANYARGS`**, so flags reach it instead of being rejected by roll's own
+  parser (`roll pull --format json` previously died with `ERROR: Unsupported flag --format`). As
+  for every command on that list, roll's parse loop now stops at the first dash-prefixed argument
+  and forwards the rest, which means `pull` is responsible for rendering its own `-h`/`--help`.
+
+### Fixed
+
+- **`roll theme all` no longer exits 0 in silence when there is nothing to build.** Both discovery
+  lists empty made every loop in `buildAll` a no-op, so the command printed not one line and
+  returned success — a project with no Gulp/Yarn theme build was indistinguishable from a
+  successful build. It now reports `No themes found - ...` and exits 1, matching what the
+  interactive branch already did for the same condition. Unattended builds were the visible cost:
+  they recorded an empty `pub/static` with no output explaining why.
+
 ## [0.8.2](https://github.com/epartment/rolldev/releases/tag/0.8.2) — 2026-09-16
 
 ### Added
