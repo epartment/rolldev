@@ -87,6 +87,11 @@ function initConfigSchema() {
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_MONGODB); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_BROWSERSYNC); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_PUBLISH_PORTS); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:1")
+    ## Registered so that setting it is not itself reported as an unknown key, but declared
+    ## optional rather than defaulted: setConfigDefault() exports a schema default unconditionally
+    ## once a key has one, which would overwrite the value an unattended caller passed in the
+    ## environment. advisory() in utils/core.sh reads it from there.
+    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_ADVISORIES); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:optional")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_SELENIUM); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_SELENIUM_DEBUG); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_TEST_DB); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
@@ -190,8 +195,9 @@ function validateConfigValue() {
     local schema="$(getSchema "$key")"
     
     if [[ -z "$schema" ]]; then
-        # Unknown configuration key - allow but warn
-        warning "Unknown configuration key: $key"
+        # Unknown configuration key - allow but advise. A key roll does not know is a property of
+        # the project's committed .env.roll, so only a developer can resolve it.
+        advisory "Unknown configuration key: $key"
         return 0
     fi
     
@@ -762,20 +768,23 @@ function applyVersionPinFallbacks() {
 
     local i=0
     local key="" value=""
-    warning "This ${ROLL_ENV_TYPE} environment enables services whose versions are not pinned."
-    warning "Roll is falling back to a built-in version, which means upgrading roll can silently"
-    warning "change which image this project runs. From 0.9.0 this will be an error."
-    warning "These are the versions the project is running right now - run \`roll config fix-pins\`"
-    warning "to write them into .env.roll, or add them by hand:"
-    >&2 echo ""
+    ## Advisory rather than warning: this is about how the project is configured, which only a
+    ## developer can fix in the committed .env.roll. Only the OUTPUT is suppressed — the loop below
+    ## also calls setConfigValue(), so the versions this run uses are pinned either way.
+    advisory "This ${ROLL_ENV_TYPE} environment enables services whose versions are not pinned."
+    advisory "Roll is falling back to a built-in version, which means upgrading roll can silently"
+    advisory "change which image this project runs. From 0.9.0 this will be an error."
+    advisory "These are the versions the project is running right now - run \`roll config fix-pins\`"
+    advisory "to write them into .env.roll, or add them by hand:"
+    advisoryLine ""
     while [[ $i -lt ${#ROLL_MISSING_PINS[@]} ]]; do
         key="${ROLL_MISSING_PINS[$i]}"
         value="$(getRunningVersion "${key}")"
-        >&2 echo "    ${key}=${value}"
+        advisoryLine "    ${key}=${value}"
         setConfigValue "${key}" "${value}"
         i=$((i + 1))
     done
-    >&2 echo ""
+    advisoryLine ""
 
     return 0
 }

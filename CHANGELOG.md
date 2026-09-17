@@ -9,6 +9,23 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
+## [0.8.4](https://github.com/epartment/rolldev/releases/tag/0.8.4) — 2026-09-17
+
+### Added
+
+- **`ROLL_ADVISORIES=0` silences setup advice for unattended runs.** RollDev's output mixes two
+  things: advice about how the host or project is *configured* (an unpinned service version, an
+  unrecognised configuration key) and warnings about what *happened* during a run. Only the first
+  is now routed through a new `advisory()`, and only the first can be switched off. A build server
+  can neither fix that advice nor edit the shared `.env.roll` it concerns, while the developer on
+  the same project still sees it in full — and the warnings a report exists to capture, such as a
+  database volume written by a different engine or a dump containing no schema files, are never
+  suppressed. The key is registered in the config schema as `boolean:optional` so it is not itself
+  reported as unknown, and so `setConfigDefault()` cannot export a default over a value the caller
+  supplied. Deliberately not usable as a project setting: a committed `.env.roll` must not be able
+  to hide this advice from everyone else working on that project.
+  See [Unattended operation](docs/configuration/unattended-operation.md).
+
 ## [0.8.3](https://github.com/epartment/rolldev/releases/tag/0.8.3) — 2026-09-17
 
 ### Changed

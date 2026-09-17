@@ -17,6 +17,41 @@ function warning {
   >&2 printf "\033[33mWARNING\033[0m: %s\n" "$*"
 }
 
+## Advice about how the host or the project is SET UP - an unpinned service version, a
+## configuration key roll does not know, a missing or outdated gum. Distinct from warning(), which
+## reports something that happened during this run and is never silenced.
+##
+## Rendered identically, because to a developer it is a warning and nothing changes for them. The
+## difference is that an unattended caller can turn it off with ROLL_ADVISORIES=0: a build server
+## cannot act on this advice and should not be the one fixing it, while the developer working on
+## the same project still has to see it. Suppressing warning() instead would also lose the things
+## a build report exists to capture, such as a database volume written by a different engine.
+##
+## Read from the environment rather than the config schema: ROLL_ADVISORIES is registered there as
+## `boolean:optional` precisely so setConfigDefault() never exports a default over the value a
+## caller passed in. It is deliberately not settable per project - a committed .env.roll must not
+## be able to hide this advice from everyone else working on that project.
+function advisory {
+  if [[ "${ROLL_ADVISORIES:-1}" == "0" ]]; then
+    return 0
+  fi
+
+  >&2 printf "\033[33mWARNING\033[0m: %s\n" "$*"
+  return 0
+}
+
+## An unprefixed line belonging to an advisory - a blank separator, or one of the values an
+## advisory lists. Suppressed by the same switch, so a multi-line advisory disappears whole rather
+## than leaving its body behind without the WARNING lines that explained it.
+function advisoryLine {
+  if [[ "${ROLL_ADVISORIES:-1}" == "0" ]]; then
+    return 0
+  fi
+
+  >&2 printf "%s\n" "$*"
+  return 0
+}
+
 function error {
   >&2 printf "\033[31mERROR\033[0m: %s\n" "$*"
 }
