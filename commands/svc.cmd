@@ -89,6 +89,11 @@ ROLL_VERSION=${ROLL_VERSION:-"in-dev"} docker compose \
     --project-directory "${ROLL_HOME_DIR}" -p roll \
     "${DOCKER_COMPOSE_ARGS[@]}" "${ROLL_PARAMS[@]}" "$@"
 
+## remove the images this pull (or the up after it) left superseded; see utils/images.sh
+if [[ "${ROLL_PARAMS[0]}" == "pull" || "${ROLL_PARAMS[0]}" == "up" ]]; then
+    autoCleanupRollImages
+fi
+
 ## connect peered service containers to environment networks when 'svc up' is run
 if [[ "${ROLL_PARAMS[0]}" == "up" ]]; then
     for network in $(docker network ls -f label=dev.roll.environment.name --format {{.Name}}); do

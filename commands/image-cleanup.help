@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+## @description: Remove Docker images roll downloaded and no longer needs.
+## @category: utility
+
+ROLL_USAGE=$(cat <<'USAGE'
+\033[33mUsage:\033[0m
+  image-cleanup                    Remove superseded and unused roll images
+  image-cleanup --dry-run          List what would be removed and change nothing
+
+\033[33mOptions:\033[0m
+  --dry-run         Only list the images
+  -h, --help        Display this help menu
+
+\033[33mDescription:\033[0m
+  Removes two kinds of image, without asking:
+
+  superseded  the previous build of a tag, left behind without a tag when a pull found a
+              newer one. Nothing can use it again.
+  unused      a tagged image no container uses, running or stopped, such as an old PHP
+              version a project no longer pins. An environment taken down with roll env down
+              has no containers left, so its images are removed as well and downloaded again
+              on its next roll env up.
+
+  A tag a container was created from counts as used even after a pull moved it to a newer
+  build, so an environment that is up or stopped keeps its images.
+
+  Superseded images are also removed automatically after roll svc pull, roll svc up,
+  roll env pull and roll env up; unused ones only by this command. Set
+  ROLL_IMAGE_AUTO_CLEANUP=0 in ~/.roll/.env to turn the automatic run off.
+
+  Only images roll itself runs are touched: everything under ROLL_IMAGE_REPOSITORY plus the
+  third-party images named in the roll compose files (traefik, mailpit, selenium and others).
+  Docker refuses to remove an image a container still uses, and this command never forces it.
+USAGE
+)

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+[[ ! ${ROLL_DIR} ]] && >&2 echo -e "\033[31mThis script is not intended to be run directly!\033[0m" && exit 1
+## @description: Take down every running environment and the RollDev core services.
+## @category: environment
+
+ROLL_USAGE=$(cat <<'USAGE'
+\033[33mUsage:\033[0m
+  shutdown
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+
+\033[33mDescription:\033[0m
+  Runs roll env down in every environment that has a running container, then roll svc down
+  for the core services (traefik, dnsmasq, mailhog, tunnel, portainer, startpage). Meant for
+  the end of the working day with several environments up.
+
+  Like roll env down it removes containers and networks but keeps volumes, so databases and
+  search indexes survive and roll env up brings each environment back as it was. On macOS the
+  Mutagen sync of each environment is terminated as well.
+
+  An environment whose .env.roll no longer carries the name it was started under is left
+  running and reported, because roll env down in that directory would target another name.
+  The command exits non-zero when any environment is left running or a step failed.
+USAGE
+)

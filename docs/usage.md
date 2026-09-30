@@ -23,6 +23,28 @@ Starting a stopped environment:
 
     roll env start
 
+Take down every running environment and the RollDev core services at the end of the day (volumes
+are kept, so `roll env up` brings each project back as it was):
+
+    roll shutdown
+
+Remove the Docker images roll pulled and no longer needs, without asking:
+
+    roll image-cleanup
+    roll image-cleanup --dry-run
+
+It removes superseded images — the previous build of a tag, left behind without a tag when a pull
+found a newer one — and tagged roll images no container uses, such as an old PHP version a project
+no longer pins. An environment taken down with `roll env down` has no containers, so its images are
+removed too and downloaded again on its next `roll env up`. Superseded images are also removed
+automatically after `roll svc pull`, `roll svc up`, `roll env pull` and `roll env up`; unused ones
+only by this command, so a `roll shutdown` in the evening never causes re-downloads the next day.
+
+Only images roll itself runs are touched — everything under `ROLL_IMAGE_REPOSITORY` plus the
+third-party images named in roll's compose files — and an image a container still uses, running or
+stopped, is never removed. Set `ROLL_IMAGE_AUTO_CLEANUP=0` in `~/.roll/.env` to turn the automatic
+cleanup off.
+
 Import a database (if you don't have `pv` installed, use `cat` instead):
 
     pv /path/to/dump.sql.gz | gunzip -c | roll db import

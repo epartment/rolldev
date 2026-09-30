@@ -204,6 +204,11 @@ docker compose \
     --env-file "${ROLL_ENV_PATH}/.env.roll" --project-directory "${ROLL_ENV_PATH}" -p "${ROLL_ENV_NAME}" \
     "${DOCKER_COMPOSE_ARGS[@]}" "${ROLL_PARAMS[@]}" "$@"
 
+## remove the images this pull (or the up after it) left superseded; see utils/images.sh
+if [[ "${ROLL_PARAMS[0]}" == "pull" || "${ROLL_PARAMS[0]}" == "up" ]]; then
+    autoCleanupRollImages
+fi
+
 if [[ ("${ROLL_PARAMS[0]}" == "up" || "${ROLL_PARAMS[0]}" == "start") && -n "${ROLL_EXTRA_PHP_EXT}" ]]; then
   info "Adding additional PHP extension, This may take a while... (output hidden)"
   roll add-php-ext "${ROLL_EXTRA_PHP_EXT}" > /dev/null 2>&1

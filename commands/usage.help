@@ -40,6 +40,8 @@ RollDev version $(cat ${ROLL_DIR}/version)
   install           	Initializes or updates roll configuration on host machine
   shell             	Launches into a shell within the current project environment
   status                Display list of all running RollDev project environments
+  shutdown              Take down every running environment and the core services (end of day)
+  image-cleanup         Remove superseded and unused roll images to free disk space
   describe          	Display detailed information about the current environment
   doctor            	Diagnose whether the current project environment is fit to run
   debug             	Launches debug enabled shell within current project environment
