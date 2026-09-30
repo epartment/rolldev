@@ -9,6 +9,22 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
+## Unreleased
+
+### Fixed
+
+- **`roll db import < dump.sql` executes the dump again.** Since 0.8.0 it exited 0 having run
+  nothing. The MariaDB 11 client probe (`resolveDbBinary` in `commands/db.cmd`) ran
+  `roll env exec -T db sh -c 'command -v …'` with the caller's stdin, and `exec -T` forwards stdin
+  into the container, so the probe drained the dump and the real client read an empty stream. The
+  exit code gave no sign of it; only the missing rows did. The probe now reads from `/dev/null`.
+  The same drain hit `roll db connect < file.sql` and `echo … | roll db connect`, which are fixed
+  by the same change.
+- **`roll db connect` no longer requests a TTY when stdin is not one.** It passes `-T` to
+  `roll env exec` unless stdin is a terminal, so piped and scripted use no longer depends on
+  `docker compose exec` detecting the missing terminal on its own. An interactive session still
+  gets a TTY.
+
 ## [0.8.4](https://github.com/epartment/rolldev/releases/tag/0.8.4) — 2026-09-17
 
 ### Added
