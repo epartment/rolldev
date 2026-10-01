@@ -45,6 +45,11 @@ third-party images named in roll's compose files — and an image a container st
 stopped, is never removed. Set `ROLL_IMAGE_AUTO_CLEANUP=0` in `~/.roll/.env` to turn the automatic
 cleanup off.
 
+On Docker's containerd image store (the default of newer Docker Desktop installs) a superseded image
+keeps no name at all, so RollDev records the IDs of its images in `~/.roll/tmp/roll-image-ids`
+before every pull and recognises them from there. An image superseded before RollDev first recorded
+it carries no trace of where it came from and is left on disk.
+
 Import a database (if you don't have `pv` installed, use `cat` instead):
 
     pv /path/to/dump.sql.gz | gunzip -c | roll db import

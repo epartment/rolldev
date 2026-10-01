@@ -22,6 +22,17 @@ function listRunningComposeProjects() {
     return 0
 }
 
+## The names of every environment roll created a network for, one per line. networks.base.yml labels
+## each environment network with its name, which is how a roll environment is recognised after its
+## project directory or .env.roll has gone.
+function listRollNetworkEnvNames() {
+    docker network ls \
+        --filter "label=dev.roll.environment.name" \
+        --format '{{.Label "dev.roll.environment.name"}}'
+
+    return 0
+}
+
 ## The environment name a project's .env.roll declares, or nothing
 function envNameInDir() {
     local dir="$1"
@@ -34,12 +45,19 @@ function envNameInDir() {
 envNames=()
 envDirs=()
 skipped=0
+rollNetworkEnvNames="$(listRollNetworkEnvNames)"
 
 while IFS=$'\t' read -r project dir; do
     [[ -z "${project}" || "${project}" == "roll" ]] && continue
 
-    ## a compose project roll did not start
-    [[ -n "${dir}" && -f "${dir}/.env.roll" ]] || continue
+    if [[ -z "${dir}" || ! -f "${dir}/.env.roll" ]]; then
+        ## not a roll environment: a compose project roll did not start
+        [[ $'\n'"${rollNetworkEnvNames}"$'\n' == *$'\n'"${project}"$'\n'* ]] || continue
+
+        warning "Skipping ${project}: ${dir:-its project directory}/.env.roll no longer exists, so roll env down cannot be run for it. Stop it with: docker stop \$(docker ps -q --filter label=com.docker.compose.project=${project})"
+        skipped=$((skipped + 1))
+        continue
+    fi
 
     if [[ "$(envNameInDir "${dir}")" != "${project}" ]]; then
         warning "Skipping ${project}: ${dir}/.env.roll no longer names it, so roll env down there would target another environment. Stop it with: docker stop \$(docker ps -q --filter label=com.docker.compose.project=${project})"

@@ -286,7 +286,7 @@ responsibility is still describable.
 | `bin/roll` | 98 lines | Entry point, dispatch, argument parsing | **Coherent** |
 | `utils/core.sh` | 184 lines | Messaging helpers, array/version utilities, network peering | **Coherent** — the three box-drawing functions are one-line wrappers around a shared `box` helper |
 | `utils/config.sh` | 946 lines | Config schema, loading, validation, post-processing, `.env.roll` writes | **Coherent**; sole owner of configuration defaults |
-| `utils/images.sh` | 559 lines | Service catalog (version key, toggle and image per service), image-tag discovery from the registry, and cleanup of the local images roll runs | **Coherent** |
+| `utils/images.sh` | 655 lines | Service catalog (version key, toggle and image per service), image-tag discovery from the registry, and cleanup of the local images roll runs | **Coherent** |
 | `utils/registry.sh` | 461 lines | Command discovery and priority resolution | **Oversized for what it delivers** — ~200 lines serve `roll registry`'s reporting subcommands; the metadata layer they report on is a stub (**M6**) |
 | `utils/env.sh` | 108 lines | Env path location, partial precedence, env-type validation | **Coherent** |
 | `utils/install.sh` | 63 lines | Host install assertion, SSH config | **Coherent** |

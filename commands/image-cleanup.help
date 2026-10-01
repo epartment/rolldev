@@ -32,5 +32,9 @@ ROLL_USAGE=$(cat <<'USAGE'
   Only images roll itself runs are touched: everything under ROLL_IMAGE_REPOSITORY plus the
   third-party images named in the roll compose files (traefik, mailpit, selenium and others).
   Docker refuses to remove an image a container still uses, and this command never forces it.
+
+  The containerd image store of newer Docker Desktop installs keeps no name on a superseded
+  image, so roll records the IDs of its images in ~/.roll/tmp/roll-image-ids before every pull
+  and recognises them from there. An image superseded before roll recorded it is left alone.
 USAGE
 )

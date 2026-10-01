@@ -148,6 +148,12 @@ if [[ "${ROLL_PARAMS[0]}" == "sh" ]]; then
     ROLL_PARAMS=("exec" "-T" "${ROLL_PARAMS[1]}" "sh" "-c" "${ROLL_PARAMS[2]}")
 fi
 
+## put the images this pull may supersede on record while they still carry their name; the
+## containerd image store keeps no name on a superseded image (see utils/images.sh)
+if [[ "${ROLL_PARAMS[0]}" == "pull" || "${ROLL_PARAMS[0]}" == "up" ]]; then
+    recordRollImageIds
+fi
+
 ## disconnect peered service containers from environment network
 if [[ "${ROLL_PARAMS[0]}" == "down" ]]; then
     disconnectPeeredServices "$(renderEnvNetworkName)"

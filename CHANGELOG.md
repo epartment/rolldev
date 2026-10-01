@@ -17,8 +17,9 @@ that only restate the release note above them.
   every environment that has a running container, found through the Compose project labels on the
   containers, and then `roll svc down`. Volumes are kept. An environment whose `.env.roll` no longer
   carries the name it was started under is left running and reported, because `roll env down` in
-  that directory would target a different Compose project; the command then exits non-zero, as it
-  does when any step fails.
+  that directory would target a different Compose project, and so is one whose project directory or
+  `.env.roll` has gone (recognised by its `dev.roll.environment.name` network label); the command
+  then exits non-zero, as it does when any step fails.
 - **Superseded images are cleaned up, by hand and automatically.** A pull that finds a newer build
   of a tag leaves the previous image behind untagged, and nothing ever removed it, so hosts
   pulling the rebuilt images filled up. `roll image-cleanup` removes those superseded images and
@@ -29,8 +30,11 @@ that only restate the release note above them.
   parallel builds cannot delete each other's freshly pulled images. A tag a
   container was created from counts as used even when the tag has since moved to a newer image, so
   a freshly pulled image is not deleted before its environment's next `up`. Only images roll runs
-  are touched — `ROLL_IMAGE_REPOSITORY` plus the third-party images named in roll's compose files —
-  and removal never forces, so Docker keeps any image a container still uses.
+  are touched — `ROLL_IMAGE_REPOSITORY` plus the third-party images named in roll's compose files,
+  ignoring any name in a user override that is only an interpolation — and removal never forces, so
+  Docker keeps any image a container still uses. On Docker's containerd image store a superseded
+  image keeps no name, so roll records its image IDs in `~/.roll/tmp/roll-image-ids` before every
+  pull and recognises superseded images from that ledger on either store.
 
 ### Fixed
 

@@ -38,6 +38,8 @@ for globalConfig in "${ROLL_HOME_DIR}/.env.roll" "${ROLL_HOME_DIR}/.env"; do
 done
 ROLL_IMAGE_REPOSITORY="$(getConfig ROLL_IMAGE_REPOSITORY "ghcr.io/epartment/roll")"
 
+recordRollImageIds
+
 cleanupReferences=()
 cleanupListing=()
 supersededCount=0
