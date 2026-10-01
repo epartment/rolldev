@@ -92,6 +92,9 @@ function initConfigSchema() {
     ## once a key has one, which would overwrite the value an unattended caller passed in the
     ## environment. advisory() in utils/core.sh reads it from there.
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_ADVISORIES); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:optional")
+    ## Optional for the same reason: autoCleanupRollImages() in utils/images.sh falls back to 1
+    ## itself, so an exported schema default cannot override ROLL_IMAGE_AUTO_CLEANUP=0 from a caller.
+    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_IMAGE_AUTO_CLEANUP); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:optional")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_SELENIUM); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_SELENIUM_DEBUG); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_TEST_DB); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")

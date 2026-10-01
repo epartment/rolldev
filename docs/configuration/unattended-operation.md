@@ -63,3 +63,23 @@ so they keep their voice.
 Pass it per invocation, as above, or export it for a whole unattended session. It is deliberately
 awkward to set project-wide: a committed `.env.roll` that hid this advice would hide it from every
 other developer on that project, which is the opposite of what it is for.
+
+## Automatic image cleanup
+
+After `roll svc pull`, `roll svc up`, `roll env pull` and `roll env up`, RollDev removes the roll
+images a pull superseded: the previous build of a tag, left behind without a tag once the newer one
+arrived. Docker never removes those on its own, so a host that pulls the nightly-rebuilt images
+fills its disk with them. Only images roll runs are considered, and Docker refuses to remove an
+image a container — running or stopped — still uses, so an environment built in parallel keeps its
+images.
+
+To keep every image, for example while debugging which build a container came from, pass
+`ROLL_IMAGE_AUTO_CLEANUP=0` for the invocation or export it for the session:
+
+```bash
+ROLL_IMAGE_AUTO_CLEANUP=0 roll env up
+```
+
+It can also be set in `~/.roll/.env`. The automatic run never removes a tagged image, so parallel
+builds cannot delete each other's freshly pulled images. `roll image-cleanup` does remove tagged
+images no container uses, so run it on a build server only when no build is in progress.

@@ -33,10 +33,12 @@ eval "$(
 ## MariaDB 11 images dropped the mysql*/mysqldump compatibility symlinks and only ship
 ## mariadb/mariadb-dump; probe once per invocation and use whichever pair is present, so both
 ## MariaDB 11 and MySQL/MariaDB 10.x images keep working. Sets RESOLVED_DB_BIN on success.
+## The probe must not inherit stdin: `exec -T` forwards it into the container, so without the
+## </dev/null it would drain the dump that `import` (or a piped `connect`) is about to read.
 resolveDbBinary() {
     local preferred="$1" fallback="$2" bin
 
-    bin="$("${ROLL_DIR}/bin/roll" env exec -T db sh -c "command -v ${preferred} || command -v ${fallback}" 2>/dev/null)" || true
+    bin="$("${ROLL_DIR}/bin/roll" env exec -T db sh -c "command -v ${preferred} || command -v ${fallback}" </dev/null 2>/dev/null)" || true
     if [[ ! ${bin} ]]; then
         local image
         image="$(docker container inspect "${DB_CONTAINER}" --format '{{.Config.Image}}' 2>/dev/null)" || true
@@ -50,7 +52,11 @@ resolveDbBinary() {
 case "${ROLL_PARAMS[0]}" in
     connect)
         resolveDbBinary mariadb mysql
-        "${ROLL_DIR}/bin/roll" env exec db \
+        ## Only ask for a TTY when stdin is one, so `roll db connect < file.sql` and scripted
+        ## `-e` calls do not depend on docker compose noticing the missing terminal itself.
+        CONNECT_EXEC_FLAGS=()
+        [[ -t 0 ]] || CONNECT_EXEC_FLAGS=(-T)
+        "${ROLL_DIR}/bin/roll" env exec "${CONNECT_EXEC_FLAGS[@]}" db \
             "${RESOLVED_DB_BIN}" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" --database="${MYSQL_DATABASE}" "${ROLL_PARAMS[@]:1}" "$@"
         ;;
     import)

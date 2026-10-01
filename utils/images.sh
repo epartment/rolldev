@@ -373,3 +373,283 @@ function showServiceVersions() {
 
     return 0
 }
+
+## Image cleanup.
+##
+## Every `docker compose pull` that finds a newer build of a tag moves the tag onto the new image
+## and leaves the old one behind as a dangling image, still taking the full size on disk. Nothing in
+## Docker ever removes those, so on a developer machine that pulls the rebuilt roll images they
+## accumulate without limit.
+##
+## Two classes are told apart here, because only one of them is always garbage:
+##
+##   superseded  dangling images that were a roll image. Nothing can start a container from them any
+##               more, so they are removed without asking, and automatically after a pull.
+##   unused      tagged roll images no container uses, e.g. php-fpm:8.1 after a project moved to
+##               8.2. Removed by `roll image-cleanup` only, never automatically: `roll env down`
+##               and `roll shutdown` remove a project's containers, so the images of every project
+##               that is merely down count as unused too, and removing them after every `up`
+##               would make each environment download its images again after a shutdown.
+##
+## Whether a dangling image was roll's depends on the image store. The classic store keeps the
+## repository name through the image's digest (`ghcr.io/epartment/roll/php-fpm <none>`); the
+## containerd store, the default of newer Docker Desktop installs, keeps nothing at all (`<none>
+## <none>`, no tags, no digests). So roll also keeps a ledger of the image IDs it has seen carrying
+## a roll name (recordRollImageIds), and a dangling image is roll's when either its name matches or
+## its ID is in that ledger. An image that was superseded before roll first recorded it stays
+## unrecognised on the containerd store, which leaves it on disk rather than guessing.
+##
+## Removal never forces. `docker image rm` refuses an image a container still uses, running or
+## stopped, and that refusal is what keeps an image a stopped environment needs on disk.
+
+## Repository patterns, as bash globs, of every image roll itself runs: the ${ROLL_IMAGE_REPOSITORY}
+## namespace plus the third-party images named literally in roll's compose fragments (traefik,
+## mailpit, selenium, ...). Read from the fragments rather than listed here, so a service added
+## later is covered without touching this function. An interpolation at the end of a name becomes
+## `*`, so selenium/standalone-chrome${ROLL_SELENIUM_DEBUG:-} matches the plain and the -debug image.
+##
+## A `*` anywhere else is dropped, pattern and all. These patterns decide what gets deleted, and a
+## user override in ~/.roll/environments declaring `image: ${IMAGE}` or `${REGISTRY}/name` would
+## otherwise become `*` or `*/name` and claim images that have nothing to do with roll.
+function rollImageRepositoryPatterns() {
+    local repository="${ROLL_IMAGE_REPOSITORY:-ghcr.io/epartment/roll}"
+    local root=""
+
+    echo "${repository}/*"
+
+    for root in "${ROLL_DIR}/docker" "${ROLL_DIR}/environments" "${ROLL_HOME_DIR:-${HOME}/.roll}/environments"; do
+        [[ -d "${root}" ]] || continue
+
+        find "${root}" -type f -name '*.yml' -exec grep -h '^[[:space:]]*image:' {} + 2>/dev/null \
+            | sed -e 's/^[[:space:]]*image:[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/["'\'']//g' \
+            | grep -v '^[$][{]ROLL_IMAGE_REPOSITORY[}]' \
+            | sed -e 's/[$][{][^}]*[}]/*/g' -e 's/@.*$//' -e 's/:.*$//' \
+            | grep -E '^[^*]+$|^[^*]*[^/*][*]$' || true
+    done | sort -u
+
+    return 0
+}
+
+## isRollImageRepository <repository> <pattern>...
+function isRollImageRepository() {
+    local repository="$1"
+    shift
+    local pattern=""
+
+    for pattern in "$@"; do
+        # shellcheck disable=SC2053  # the pattern is a glob on purpose
+        [[ "${repository}" == ${pattern} ]] && return 0
+    done
+
+    return 1
+}
+
+function rollImageLedgerFile() {
+    echo "${ROLL_HOME_DIR:-${HOME}/.roll}/tmp/roll-image-ids"
+    return 0
+}
+
+## Record the IDs of every image that currently carries a roll name, plus the image each container
+## was created from when that container names a roll image, and drop ledger entries for images that
+## no longer exist. Run before a pull, so the build a pull is about to supersede is on record while
+## it still has its name; the container half covers an image that was superseded while a container
+## held it, which the next `up` frees.
+##
+## The rewrite goes through a temp file and a rename, so a parallel roll run never reads a half
+## written ledger; an entry lost to two runs rewriting at once only means that image is not cleaned
+## up automatically, never that a wrong one is.
+function recordRollImageIds() {
+    local patterns=() containers=() line="" id="" repository="" image="" config_image="" reference=""
+    local ledger="" existing="" seen=""
+
+    ledger="$(rollImageLedgerFile)"
+
+    while IFS= read -r line; do
+        patterns+=("${line}")
+    done < <(rollImageRepositoryPatterns)
+
+    existing="$(docker image ls -a -q --no-trunc 2>/dev/null)" || return 0
+
+    while IFS=$'\t' read -r id repository; do
+        [[ -z "${id}" || "${repository}" == "<none>" ]] && continue
+        isRollImageRepository "${repository}" "${patterns[@]}" || continue
+        seen="${seen}${id}"$'\n'
+    done < <(docker image ls --filter dangling=false --no-trunc --format '{{.ID}}\t{{.Repository}}' 2>/dev/null)
+
+    while IFS= read -r line; do
+        [[ -n "${line}" ]] && containers+=("${line}")
+    done < <(docker container ls -aq --no-trunc 2>/dev/null)
+
+    if (( ${#containers[@]} > 0 )); then
+        while IFS=$'\t' read -r image config_image; do
+            normalizeImageReference reference "${config_image}"
+            if [[ "${reference}" == *@* ]]; then
+                reference="${reference%%@*}"
+            else
+                reference="${reference%:*}"
+            fi
+            isRollImageRepository "${reference}" "${patterns[@]}" || continue
+            seen="${seen}${image}"$'\n'
+        done < <(docker container inspect --format '{{.Image}}{{"\t"}}{{.Config.Image}}' "${containers[@]}" 2>/dev/null)
+    fi
+
+    if [[ -f "${ledger}" ]]; then
+        while IFS= read -r id; do
+            [[ -n "${id}" ]] || continue
+            [[ $'\n'"${existing}"$'\n' == *$'\n'"${id}"$'\n'* ]] || continue
+            seen="${seen}${id}"$'\n'
+        done < "${ledger}"
+    fi
+
+    mkdir -p "${ledger%/*}" 2>/dev/null || return 0
+    printf '%s' "${seen}" | sort -u > "${ledger}.$$" 2>/dev/null \
+        && mv -f "${ledger}.$$" "${ledger}" 2>/dev/null
+    rm -f "${ledger}.$$" 2>/dev/null
+
+    return 0
+}
+
+## Superseded roll images, one "<image id>\t<name>\t<size>\t<created>" line each: dangling images
+## whose kept repository name is roll's, or whose ID the ledger recorded. A dangling image with
+## neither carries no trace of where it came from, so it is not roll's to remove.
+function listSupersededRollImages() {
+    local patterns=() line="" id="" repository="" size="" created="" recorded=""
+
+    while IFS= read -r line; do
+        patterns+=("${line}")
+    done < <(rollImageRepositoryPatterns)
+
+    if [[ -f "$(rollImageLedgerFile)" ]]; then
+        recorded="$(cat "$(rollImageLedgerFile)" 2>/dev/null)" || true
+    fi
+
+    while IFS=$'\t' read -r id repository size created; do
+        [[ -z "${id}" ]] && continue
+        if [[ "${repository}" != "<none>" ]] && isRollImageRepository "${repository}" "${patterns[@]}"; then
+            printf '%s\t%s\t%s\t%s\n' "${id}" "${repository}" "${size}" "${created}"
+        elif [[ $'\n'"${recorded}"$'\n' == *$'\n'"${id}"$'\n'* ]]; then
+            printf '%s\t%s\t%s\t%s\n' "${id}" "<untagged ${id:7:12}>" "${size}" "${created}"
+        fi
+    done < <(docker image ls --filter dangling=true --no-trunc \
+        --format '{{.ID}}\t{{.Repository}}\t{{.Size}}\t{{.CreatedSince}}' 2>/dev/null)
+
+    return 0
+}
+
+## An image reference as `docker image ls` spells it: Docker Hub prefixes dropped and the implicit
+## :latest made explicit, so `traefik` and `docker.io/library/traefik:latest` compare equal.
+## normalizeImageReference <varname> <reference> - assigns rather than prints, so a loop over every
+## container on the host does not fork a subshell per container.
+function normalizeImageReference() {
+    local var="$1" image_reference="$2"
+
+    image_reference="${image_reference#docker.io/}"
+    image_reference="${image_reference#library/}"
+
+    if [[ "${image_reference}" != *@* && "${image_reference##*/}" != *:* ]]; then
+        image_reference="${image_reference}:latest"
+    fi
+
+    printf -v "${var}" '%s' "${image_reference}"
+    return 0
+}
+
+## Tagged roll images no container uses, one "<repository:tag>\t<repository:tag>\t<size>\t<created>"
+## line each. The reference is the tag rather than the image id: one image can carry several tags,
+## and removing it by id is refused while more than one tag points at it.
+##
+## A container counts against a tag both through the image id it runs and through the tag it was
+## created from. The second matters after a pull: the tag has moved on to a newer image that no
+## container runs yet, while the environment still names that tag and would pull it straight back
+## on its next `up`.
+function listUnusedRollImages() {
+    local patterns=() containers=() used="" line="" id="" repository="" tag="" size="" created=""
+    local image="" config_image="" reference=""
+
+    while IFS= read -r line; do
+        patterns+=("${line}")
+    done < <(rollImageRepositoryPatterns)
+
+    ## Stopped containers count: `roll env stop` leaves them in place and `env start` reuses them
+    while IFS= read -r line; do
+        [[ -n "${line}" ]] && containers+=("${line}")
+    done < <(docker container ls -aq --no-trunc 2>/dev/null)
+
+    if (( ${#containers[@]} > 0 )); then
+        while IFS=$'\t' read -r image config_image; do
+            normalizeImageReference reference "${config_image}"
+            used="${used}${image}"$'\n'"${reference}"$'\n'
+        done < <(docker container inspect --format '{{.Image}}{{"\t"}}{{.Config.Image}}' "${containers[@]}" 2>/dev/null)
+    fi
+
+    while IFS=$'\t' read -r id repository tag size created; do
+        [[ -z "${id}" || "${tag}" == "<none>" ]] && continue
+        isRollImageRepository "${repository}" "${patterns[@]}" || continue
+        [[ $'\n'"${used}" == *$'\n'"${id}"$'\n'* ]] && continue
+        [[ $'\n'"${used}" == *$'\n'"${repository}:${tag}"$'\n'* ]] && continue
+        printf '%s:%s\t%s:%s\t%s\t%s\n' "${repository}" "${tag}" "${repository}" "${tag}" "${size}" "${created}"
+    done < <(docker image ls --filter dangling=false --no-trunc \
+        --format '{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}' 2>/dev/null)
+
+    return 0
+}
+
+## removeImages <reference>...
+##
+## Removes each image without forcing, and leaves the outcome in ROLL_IMAGES_REMOVED (a count),
+## ROLL_IMAGES_GONE (a count of images that had disappeared before this run got to them) and
+## ROLL_IMAGES_KEPT (one "<reference>: <docker's reason>" line per image Docker refused, typically
+## because a container still uses it).
+##
+## An image that has disappeared is told apart by asking Docker whether it still exists, not by
+## parsing the refusal: parallel `env up`s each run the automatic cleanup over the same list, and
+## Docker words "already removed" differently depending on the reference form ("No such image",
+## "unrecognized image ID"), so reporting those as kept would blame a container that does not exist.
+function removeImages() {
+    local reference="" output=""
+
+    ROLL_IMAGES_REMOVED=0
+    ROLL_IMAGES_GONE=0
+    ROLL_IMAGES_KEPT=()
+
+    for reference in "$@"; do
+        if output="$(docker image rm "${reference}" 2>&1)"; then
+            ROLL_IMAGES_REMOVED=$((ROLL_IMAGES_REMOVED + 1))
+        elif ! docker image inspect "${reference}" >/dev/null 2>&1; then
+            ROLL_IMAGES_GONE=$((ROLL_IMAGES_GONE + 1))
+        else
+            ROLL_IMAGES_KEPT+=("${reference}: ${output%%$'\n'*}")
+        fi
+    done
+
+    return 0
+}
+
+## The automatic cleanup after `roll svc pull|up` and `roll env pull|up`: superseded images only,
+## relying on the caller having run recordRollImageIds before the pull or up, which is the moment
+## the builds about to be superseded still carry their name. Silent unless it removed something. `up` is included because a pull cannot remove the image a
+## running container still holds; the `up` that recreates that container is the first moment the
+## old image is free.
+##
+## ROLL_IMAGE_AUTO_CLEANUP=0 turns it off, from ~/.roll/.env, a project's .env.roll or the process
+## environment. The schema declares the key optional rather than defaulting it, so an exported
+## default can never overwrite the value an unattended caller passed in.
+function autoCleanupRollImages() {
+    local references=() line=""
+
+    [[ "$(getConfig ROLL_IMAGE_AUTO_CLEANUP 1)" == "0" ]] && return 0
+
+    while IFS= read -r line; do
+        references+=("${line%%$'\t'*}")
+    done < <(listSupersededRollImages)
+
+    (( ${#references[@]} > 0 )) || return 0
+
+    removeImages "${references[@]}"
+
+    if (( ROLL_IMAGES_REMOVED > 0 )); then
+        info "Removed ${ROLL_IMAGES_REMOVED} superseded roll image(s). Run 'roll image-cleanup' to also remove images no container uses."
+    fi
+
+    return 0
+}

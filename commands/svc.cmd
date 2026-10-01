@@ -82,12 +82,23 @@ if [[ "${ROLL_PARAMS[0]}" == "up" ]]; then
     fi
 fi
 
+## put the images this pull may supersede on record while they still carry their name; the
+## containerd image store keeps no name on a superseded image (see utils/images.sh)
+if [[ "${ROLL_PARAMS[0]}" == "pull" || "${ROLL_PARAMS[0]}" == "up" ]]; then
+    recordRollImageIds
+fi
+
 ROLL_VERSION=$(cat ${ROLL_DIR}/version)
 
 ## pass orchestration through to docker-compose
 ROLL_VERSION=${ROLL_VERSION:-"in-dev"} docker compose \
     --project-directory "${ROLL_HOME_DIR}" -p roll \
     "${DOCKER_COMPOSE_ARGS[@]}" "${ROLL_PARAMS[@]}" "$@"
+
+## remove the images this pull (or the up after it) left superseded; see utils/images.sh
+if [[ "${ROLL_PARAMS[0]}" == "pull" || "${ROLL_PARAMS[0]}" == "up" ]]; then
+    autoCleanupRollImages
+fi
 
 ## connect peered service containers to environment networks when 'svc up' is run
 if [[ "${ROLL_PARAMS[0]}" == "up" ]]; then
