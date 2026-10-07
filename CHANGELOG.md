@@ -9,7 +9,7 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
-## Unreleased
+## [0.8.5](https://github.com/epartment/rolldev/releases/tag/0.8.5) — 2026-10-07
 
 ### Added
 
