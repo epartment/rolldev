@@ -9,6 +9,47 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
+## Unreleased
+
+### Added
+
+- **`roll shutdown` takes down everything for the end of the day.** It runs `roll env down` in
+  every environment that has a running container, found through the Compose project labels on the
+  containers, and then `roll svc down`. Volumes are kept. An environment whose `.env.roll` no longer
+  carries the name it was started under is left running and reported, because `roll env down` in
+  that directory would target a different Compose project, and so is one whose project directory or
+  `.env.roll` has gone (recognised by its `dev.roll.environment.name` network label); the command
+  then exits non-zero, as it does when any step fails.
+- **Superseded images are cleaned up, by hand and automatically.** A pull that finds a newer build
+  of a tag leaves the previous image behind untagged, and nothing ever removed it, so hosts
+  pulling the rebuilt images filled up. `roll image-cleanup` removes those superseded images and
+  every tagged image no container uses; an environment that is only down has no containers, so it
+  downloads its images again on its next `up`. The superseded half also runs automatically after
+  `roll svc pull|up` and `roll env pull|up` (`ROLL_IMAGE_AUTO_CLEANUP=0` turns that off); unused
+  images are never removed automatically, so a `roll shutdown` does not cause re-downloads and
+  parallel builds cannot delete each other's freshly pulled images. A tag a
+  container was created from counts as used even when the tag has since moved to a newer image, so
+  a freshly pulled image is not deleted before its environment's next `up`. Only images roll runs
+  are touched — `ROLL_IMAGE_REPOSITORY` plus the third-party images named in roll's compose files,
+  ignoring any name in a user override that is only an interpolation — and removal never forces, so
+  Docker keeps any image a container still uses. On Docker's containerd image store a superseded
+  image keeps no name, so roll records its image IDs in `~/.roll/tmp/roll-image-ids` before every
+  pull and recognises superseded images from that ledger on either store.
+
+### Fixed
+
+- **`roll db import < dump.sql` executes the dump again.** Since 0.8.0 it exited 0 having run
+  nothing. The MariaDB 11 client probe (`resolveDbBinary` in `commands/db.cmd`) ran
+  `roll env exec -T db sh -c 'command -v …'` with the caller's stdin, and `exec -T` forwards stdin
+  into the container, so the probe drained the dump and the real client read an empty stream. The
+  exit code gave no sign of it; only the missing rows did. The probe now reads from `/dev/null`.
+  The same drain hit `roll db connect < file.sql` and `echo … | roll db connect`, which are fixed
+  by the same change.
+- **`roll db connect` no longer requests a TTY when stdin is not one.** It passes `-T` to
+  `roll env exec` unless stdin is a terminal, so piped and scripted use no longer depends on
+  `docker compose exec` detecting the missing terminal on its own. An interactive session still
+  gets a TTY.
+
 ## [0.8.4](https://github.com/epartment/rolldev/releases/tag/0.8.4) — 2026-09-17
 
 ### Added

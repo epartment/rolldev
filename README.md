@@ -286,7 +286,7 @@ responsibility is still describable.
 | `bin/roll` | 98 lines | Entry point, dispatch, argument parsing | **Coherent** |
 | `utils/core.sh` | 184 lines | Messaging helpers, array/version utilities, network peering | **Coherent** — the three box-drawing functions are one-line wrappers around a shared `box` helper |
 | `utils/config.sh` | 946 lines | Config schema, loading, validation, post-processing, `.env.roll` writes | **Coherent**; sole owner of configuration defaults |
-| `utils/images.sh` | 375 lines | Service catalog (version key, toggle and image per service) and image-tag discovery from the registry | **Coherent** |
+| `utils/images.sh` | 655 lines | Service catalog (version key, toggle and image per service), image-tag discovery from the registry, and cleanup of the local images roll runs | **Coherent** |
 | `utils/registry.sh` | 461 lines | Command discovery and priority resolution | **Oversized for what it delivers** — ~200 lines serve `roll registry`'s reporting subcommands; the metadata layer they report on is a stub (**M6**) |
 | `utils/env.sh` | 108 lines | Env path location, partial precedence, env-type validation | **Coherent** |
 | `utils/install.sh` | 63 lines | Host install assertion, SSH config | **Coherent** |
@@ -425,6 +425,20 @@ roll env down
 roll restart
 ```
 
+Take down every running environment and then the shared services (end of the working day):
+
+```bash
+roll shutdown
+```
+
+Remove superseded roll images (the untagged previous builds a pull leaves behind) and tagged roll
+images no container uses. The superseded half also runs automatically after `svc pull|up` and
+`env pull|up` unless `ROLL_IMAGE_AUTO_CLEANUP=0`:
+
+```bash
+roll image-cleanup
+```
+
 Open a shell in the `php-fpm` container as `www-data`:
 
 ```bash
@@ -529,6 +543,7 @@ exists and where it lives.
 | `roll config check-pins` / `fix-pins` | `commands/config.cmd` |
 | `roll config versions [service]` — pinned versions, or a service's published versions one per line on stdout | `commands/config.cmd`, `utils/images.sh` |
 | `roll config version <service> <version>` — set a pin without prompting | `commands/config.cmd` |
+| `roll image-cleanup [--dry-run]` — remove (or list) superseded and unused images, never prompts | `commands/image-cleanup.cmd`, `utils/images.sh` |
 | Flag-first prompts | `utils/interact.sh` |
 
 Two rules bind anything added here:
@@ -678,6 +693,7 @@ line-audited, and neither backup nor restore was executed against a live environ
 | A command run right after `roll env up` fails to connect to the DB or search engine | No fragment declares a `healthcheck:` and `up` does not pass `--wait`, so it returns when containers *start* | Retry with a wait loop against the service. See `FEATURE-REQUESTS.md` H1 |
 | `Mutagen sync sessions are not used on "linux" host environments` | `roll sync` is macOS-only | Expected; Linux and WSL bind-mount directly |
 | `Mutagen configuration does not exist for environment type "…"` | Only `magento1`, `magento2` and `shopware` ship a `.mutagen.yml` | Expected; that type uses a bind mount on macOS too |
+| `roll db import < dump.sql` exits 0 but no rows change (RollDev 0.8.0–0.8.4) | The client-binary probe in `commands/db.cmd` inherited stdin and drained the dump before the real client ran | Upgrade. On an affected version pipe straight into `roll env exec -T db sh -c 'mariadb -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"'` (`mysql` on MySQL images) and check row counts, not the exit code |
 | In-container `composer install` reports a missing `.git` in a `vendor/` package | Mutagen's `ignore.vcs: true` strips `.git` at every depth, so source installs have no checkout | Remove the affected `vendor/` directories and re-run `composer install` to force dist installs |
 | Files written to `var/` or `pub/static/` on the host are invisible in the container | Both paths are excluded from the Mutagen session | Write through the container (`roll cli`), or `docker cp` into the volume |
 | A `roll` subcommand exits 1 printing only its opening `INFO:` lines, on Linux but not macOS | `set -e` plus a statement returning non-zero — classically a bare `((x++))` from 0 — kills the sourced command, and the `ERR` trap is not inherited by functions | Use `x=$((x + 1))`; see [Dispatch](#dispatch) |

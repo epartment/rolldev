@@ -79,15 +79,30 @@ None outstanding.
 **L4. `roll config schema` silently omits registered keys** — `commands/config.cmd:93-165`
 
 - *What:* The schema display is seven hand-maintained category filters with no catch-all, so any
-  registered key matching none of them is invisible. `ROLL_ADMIN_AUTOLOGIN` and
-  `ROLL_MAGENTO_STATIC_CACHING` are two current examples; both are in `initConfigSchema` and neither
-  appears in the output. Every key added from now on has to be wired into a filter by hand or it
+  registered key matching none of them is invisible. `ROLL_ADMIN_AUTOLOGIN`,
+  `ROLL_MAGENTO_STATIC_CACHING`, `ROLL_ADVISORIES` and `ROLL_IMAGE_AUTO_CLEANUP` are current
+  examples; all are in `initConfigSchema` and none appears in the output. Every key added from now on has to be wired into a filter by hand or it
   vanishes from the only listing users have.
 - *Why it matters:* `config schema` is the discovery surface for configuration, and an omitted key
   reads as "not supported". It also makes the listing quietly wrong rather than visibly incomplete.
 - *Suggested fix:* Derive the category from the key once (a `schemaCategoryOf` helper, or a category
   column alongside `ROLL_CONFIG_SCHEMA_VALUES`) and render groups from that, so registering a key is
   the only step needed. Failing that, add a final "Other" group printing whatever matched nothing.
+
+**L5. `roll env up` exits 1 on an environment without `php-fpm` whenever an SSH agent is running** — `commands/env.cmd:245-248`
+
+- *What:* After a successful `up`/`start`, `env.cmd` runs `roll root chown` and `roll root chmod` on
+  `/run/host-services/ssh-auth.sock` whenever `SSH_AUTH_SOCK` is set. Both exec into the shell
+  container (`php-fpm` by default), so on an environment that has none — the `local` type with its
+  own `.roll/roll-env.yml`, or any project with `ROLL_ENV_SHELL_CONTAINER` pointing at a missing
+  service — the command ends with `service "php-fpm" is not running` and exit status 1 although
+  every container started. **Verified** on macOS with a `local` environment running only redis;
+  the same code is in 0.8.4.
+- *Why it matters:* A script, CI job or the build server cannot tell a
+  failed `up` from a successful one, and a developer sees an error for a step that does not apply.
+- *Suggested fix:* Run the two socket commands only when the shell container is part of this
+  environment (for example `roll env ps -q "${ROLL_ENV_SHELL_CONTAINER}"` returns an id), and do not
+  let their failure decide the exit status of `up`.
 
 ## Checked, and already covered
 
