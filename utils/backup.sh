@@ -379,7 +379,23 @@ function restoreVolume() {
         if [[ $RESTORE_FORCE -eq 1 ]]; then
             logMessage INFO "Removing existing volume: $volume_name"
             logVerbose "Executing: docker volume rm $volume_name"
-            docker volume rm "$volume_name" >/dev/null 2>&1
+            # Docker refuses to remove a volume that any container references, stopped ones
+            # included. Unchecked, that failure ended the restore under errexit with no message at
+            # all, and without errexit the idempotent `docker volume create` below would let the
+            # archive be extracted over the old contents and report success. Either way a volume
+            # that could not be removed must never be restored into, and the user needs the reason.
+            local rm_output
+            if ! rm_output="$(docker volume rm "$volume_name" 2>&1)"; then
+                local holders
+                holders="$(docker ps -a --filter volume="$volume_name" --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')" || true
+                holders="${holders% }"
+                logMessage ERROR "Could not remove volume $volume_name: $rm_output"
+                if [[ -n "$holders" ]]; then
+                    logMessage ERROR "Containers still holding it (running or stopped): $holders"
+                fi
+                logMessage ERROR "Remove them first - 'roll env down' for this environment's containers, 'docker rm <name>' for any other - then rerun the restore."
+                return 1
+            fi
         else
             logMessage ERROR "Volume $volume_name already exists. Use --force to overwrite."
             return 1
@@ -754,6 +770,12 @@ function signEnvironmentCertificate() {
 ## Restore and restore-full disagreed here: a full restore has no .env.roll yet, because the
 ## configuration is inside the backup, and the env commands require one. The guard covers both,
 ## so the two callers no longer need separate copies.
+##
+## Stopped containers count: Docker will not remove a volume that any container references, running
+## or not, so a stopped environment left in place made every `restore --force` fail on its first
+## volume. `--remove-orphans` takes the containers of services the current .env.roll no longer
+## enables as well (an Elasticsearch left behind after a switch to OpenSearch still holds esdata).
+## Volumes are kept - restoreVolume decides per volume what to replace.
 function stopEnvironment() {
     logVerbose "Environment path: ${ROLL_ENV_PATH}"
 
@@ -762,15 +784,15 @@ function stopEnvironment() {
         return 0
     fi
 
-    logVerbose "Checking for running containers with project: ${ROLL_ENV_NAME}"
-    local running_containers
-    running_containers="$(docker ps --filter "label=com.docker.compose.project=${ROLL_ENV_NAME}" -q)" || true
+    logVerbose "Checking for containers with project: ${ROLL_ENV_NAME}"
+    local env_containers
+    env_containers="$(docker ps -a --filter "label=com.docker.compose.project=${ROLL_ENV_NAME}" -q)" || true
 
-    if [[ -n "${running_containers}" ]]; then
+    if [[ -n "${env_containers}" ]]; then
         logMessage INFO "Stopping environment..."
-        "${ROLL_DIR}/bin/roll" env down || true
+        "${ROLL_DIR}/bin/roll" env down --remove-orphans || true
     else
-        logVerbose "No running containers for this environment"
+        logVerbose "No containers for this environment"
     fi
 
     return 0

@@ -9,6 +9,23 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
+## Unreleased
+
+### Fixed
+
+- **`roll restore --force` works on a stopped environment.** The restore only ran `roll env down`
+  when one of the environment's containers was running. Docker refuses to remove a volume that any
+  container references, stopped ones included, so a stopped environment kept every volume in use
+  and the restore died on the first one. `stopEnvironment` in `utils/backup.sh` now takes the
+  environment down whenever it has containers, running or stopped, and passes `--remove-orphans`,
+  so containers of services the current `.env.roll` no longer enables are removed as well; volumes
+  are kept. `roll restore-full` shares the change.
+- **A volume `roll restore --force` cannot remove now stops the restore with a reason.** The
+  `docker volume rm` result was never checked, so under roll's errexit the restore ended right after
+  `Removing existing volume: …` with exit 1 and no error message. It now prints Docker's error and
+  the containers still holding the volume, then exits 1 without writing into it. Volumes restored
+  earlier in the same run keep their new contents.
+
 ## [0.8.5](https://github.com/epartment/rolldev/releases/tag/0.8.5) — 2026-10-07
 
 ### Added
