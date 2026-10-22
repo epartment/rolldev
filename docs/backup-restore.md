@@ -327,8 +327,8 @@ writing into it, and names the containers holding it. Volumes restored earlier i
 their new contents, so rerun the whole restore once the containers are gone:
 
 ```bash
-# Remove the container by the name the error printed, then retry
-docker rm <name>
+# Remove the container by the name the error printed (-f also takes a running one), then retry
+docker rm -f <name>
 roll restore --force
 ```
 

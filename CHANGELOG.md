@@ -25,6 +25,9 @@ that only restate the release note above them.
   `Removing existing volume: …` with exit 1 and no error message. It now prints Docker's error and
   the containers still holding the volume, then exits 1 without writing into it. Volumes restored
   earlier in the same run keep their new contents.
+- **`roll restore --dry-run` no longer stops the environment.** `stopEnvironment` ran `roll env
+  down` before any dry-run check, so a preview of a running environment took it down. It now only
+  reports that the environment would be stopped; `roll restore-full --dry-run` shares the change.
 
 ## [0.8.5](https://github.com/epartment/rolldev/releases/tag/0.8.5) — 2026-10-07
 

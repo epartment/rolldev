@@ -393,7 +393,7 @@ function restoreVolume() {
                 if [[ -n "$holders" ]]; then
                     logMessage ERROR "Containers still holding it (running or stopped): $holders"
                 fi
-                logMessage ERROR "Remove them first - 'roll env down' for this environment's containers, 'docker rm <name>' for any other - then rerun the restore."
+                logMessage ERROR "Remove them first - 'roll env down' for this environment's containers, 'docker rm -f <name>' for any other (running or stopped) - then rerun the restore."
                 return 1
             fi
         else
@@ -776,6 +776,9 @@ function signEnvironmentCertificate() {
 ## volume. `--remove-orphans` takes the containers of services the current .env.roll no longer
 ## enables as well (an Elasticsearch left behind after a switch to OpenSearch still holds esdata).
 ## Volumes are kept - restoreVolume decides per volume what to replace.
+##
+## A dry run only reports the teardown: `env down` removes containers, which --dry-run promises
+## not to touch.
 function stopEnvironment() {
     logVerbose "Environment path: ${ROLL_ENV_PATH}"
 
@@ -788,7 +791,9 @@ function stopEnvironment() {
     local env_containers
     env_containers="$(docker ps -a --filter "label=com.docker.compose.project=${ROLL_ENV_NAME}" -q)" || true
 
-    if [[ -n "${env_containers}" ]]; then
+    if [[ -n "${env_containers}" && $RESTORE_DRY_RUN -eq 1 ]]; then
+        logMessage INFO "[DRY RUN] Would stop the environment and remove its containers (roll env down --remove-orphans)"
+    elif [[ -n "${env_containers}" ]]; then
         logMessage INFO "Stopping environment..."
         "${ROLL_DIR}/bin/roll" env down --remove-orphans || true
     else
