@@ -317,6 +317,21 @@ roll restore --force
 docker volume rm ${ROLL_ENV_NAME}_dbdata
 ```
 
+**`--force` fails with "Could not remove volume … volume is in use":**
+
+Docker will not remove a volume that a container still references, and a stopped container counts.
+`roll restore` runs `roll env down --remove-orphans` first whenever the environment has containers,
+running or stopped, so this error means something else still holds the volume: a container from
+outside this environment, or an `env down` that failed. The restore stops at that volume, before
+writing into it, and names the containers holding it. Volumes restored earlier in the same run keep
+their new contents, so rerun the whole restore once the containers are gone:
+
+```bash
+# Remove the container by the name the error printed (-f also takes a running one), then retry
+docker rm -f <name>
+roll restore --force
+```
+
 **Encrypted backup won't decrypt:**
 ```bash
 # Ensure GPG is installed
