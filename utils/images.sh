@@ -41,6 +41,7 @@ ROLL_IMAGE_CATALOG=(
     "nginx:NGINX_VERSION:ROLL_NGINX:nginx:registry"
     "redis:REDIS_VERSION:ROLL_REDIS:redis:registry"
     "dragonfly:DRAGONFLY_VERSION:ROLL_DRAGONFLY:dragonfly:registry"
+    "valkey:VALKEY_VERSION:ROLL_VALKEY:valkey:registry"
     "varnish:VARNISH_VERSION:ROLL_VARNISH:varnish:registry"
     "elasticsearch:ELASTICSEARCH_VERSION:ROLL_ELASTICSEARCH:elasticsearch:registry"
     "opensearch:OPENSEARCH_VERSION:ROLL_OPENSEARCH:opensearch:registry"

@@ -70,7 +70,7 @@ The command performs 12 automated steps:
 ### 7. Service Health Checks
 - Waits for database connectivity
 - Verifies search engine cluster health  
-- Confirms Redis availability
+- Confirms Redis/Valkey availability (`roll redis ping`)
 
 ### 8. Magento Project Files
 - Downloads Magento via Composer
@@ -100,11 +100,21 @@ The command performs 12 automated steps:
 
 The command automatically configures compatible software versions based on the Magento version:
 
-### Magento 2.4.8+
+### Magento 2.4.9
+- **PHP**: 8.4
+- **Database**: MariaDB 11.4
+- **Search**: OpenSearch 2.19 (with Elasticsearch 7.17 fallback)
+- **Cache**: Valkey 9 (`ROLL_VALKEY=1`, reachable as `redis`)
+- **Queue**: RabbitMQ 4.1
+- **HTTP Cache**: Varnish 7.7
+- **Package Manager**: Composer 2
+- **JavaScript**: Node.js 19
+
+### Magento 2.4.8
 - **PHP**: 8.3
 - **Database**: MariaDB 11.4
 - **Search**: OpenSearch 2.19 (with Elasticsearch 7.17 fallback)
-- **Cache**: Valkey 8 (Redis fork)
+- **Cache**: Valkey 8 (`ROLL_VALKEY=1`, reachable as `redis`)
 - **Queue**: RabbitMQ 4.1
 - **HTTP Cache**: Varnish 7.7
 - **Package Manager**: Composer 2

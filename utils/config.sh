@@ -78,6 +78,7 @@ function initConfigSchema() {
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_DB); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:1")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_REDIS); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:1")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_DRAGONFLY); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
+    ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_VALKEY); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_VARNISH); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_ELASTICSEARCH); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
     ROLL_CONFIG_SCHEMA_KEYS+=(ROLL_OPENSEARCH); ROLL_CONFIG_SCHEMA_VALUES+=("boolean:0")
@@ -127,6 +128,7 @@ function initConfigSchema() {
     ROLL_CONFIG_SCHEMA_KEYS+=(RABBITMQ_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     ROLL_CONFIG_SCHEMA_KEYS+=(REDIS_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     ROLL_CONFIG_SCHEMA_KEYS+=(DRAGONFLY_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
+    ROLL_CONFIG_SCHEMA_KEYS+=(VALKEY_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     ROLL_CONFIG_SCHEMA_KEYS+=(VARNISH_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     ROLL_CONFIG_SCHEMA_KEYS+=(OPENSEARCH_VERSION); ROLL_CONFIG_SCHEMA_VALUES+=("string:optional")
     ROLL_CONFIG_SCHEMA_KEYS+=(OPENSEARCH_JAVA_OPTS); ROLL_CONFIG_SCHEMA_VALUES+=("string:-Xms64m -Xmx512m")
@@ -586,6 +588,13 @@ function setConfigDerived() {
 ## the still-unset variables, is what makes a magento2 project bring up Varnish, a search engine
 ## and RabbitMQ without having to spell out the toggles.
 function applyEnvTypeDefaults() {
+    ## Dragonfly and Valkey replace the redis service rather than run beside it. ROLL_REDIS defaults
+    ## to 1 (here and in the schema), so a project that switched one of them on without also writing
+    ## ROLL_REDIS=0 would trip the conflict check in env.cmd although it never asked for Redis.
+    if [[ "${ROLL_DRAGONFLY:-0}" == "1" || "${ROLL_VALKEY:-0}" == "1" ]]; then
+        setConfigDerived ROLL_REDIS 0
+    fi
+
     if [[ "${ROLL_ENV_TYPE}" != "local" ]]; then
         setConfigDerived ROLL_NGINX 1
         setConfigDerived ROLL_DB 1
@@ -631,6 +640,9 @@ function getLegacyDefaultVersion() {
         RABBITMQ_VERSION) echo "3.11" ;;
         REDIS_VERSION) echo "7.0" ;;
         DRAGONFLY_VERSION) echo "latest" ;;
+        # Valkey has no history to preserve: it was added in this form, so an unpinned project gets
+        # the newest major the images repository publishes
+        VALKEY_VERSION) echo "9" ;;
         VARNISH_VERSION) echo "7.0" ;;
         OPENSEARCH_VERSION) echo "2.5" ;;
         # the mongodb fragment interpolated MONGODB_VERSION, a key the schema never defined, so
@@ -735,6 +747,7 @@ function collectMissingVersionPins() {
         "ROLL_DB:DB_DISTRIBUTION_VERSION"
         "ROLL_REDIS:REDIS_VERSION"
         "ROLL_DRAGONFLY:DRAGONFLY_VERSION"
+        "ROLL_VALKEY:VALKEY_VERSION"
         "ROLL_VARNISH:VARNISH_VERSION"
         "ROLL_ELASTICSEARCH:ELASTICSEARCH_VERSION"
         "ROLL_OPENSEARCH:OPENSEARCH_VERSION"
@@ -945,13 +958,28 @@ function showConfig() {
     done
 }
 
+## inMemoryStoreToggleIsUnique <ROLL_REDIS> <ROLL_DRAGONFLY> <ROLL_VALKEY>
+## True when at most one of the three is 1. All three fragments define the same compose service,
+## `redis`, so enabling two would silently merge them into one container running the last image.
+function inMemoryStoreToggleIsUnique() {
+    local enabled=0 toggle=""
+
+    for toggle in "$@"; do
+        if [[ "${toggle}" == "1" ]]; then
+            enabled=$((enabled + 1))
+        fi
+    done
+
+    [[ ${enabled} -le 1 ]]
+}
+
 ## Check for configuration conflicts
 function checkConfigConflicts() {
     local errors=0
     
-    # Redis vs Dragonfly conflict
-    if [[ "$(getConfig ROLL_REDIS 0)" == "1" && "$(getConfig ROLL_DRAGONFLY 0)" == "1" ]]; then
-        error "Configuration conflict: ROLL_REDIS and ROLL_DRAGONFLY cannot both be enabled"
+    # Redis, Dragonfly and Valkey all provide the one `redis` service
+    if ! inMemoryStoreToggleIsUnique "$(getConfig ROLL_REDIS 0)" "$(getConfig ROLL_DRAGONFLY 0)" "$(getConfig ROLL_VALKEY 0)"; then
+        error "Configuration conflict: at most one of ROLL_REDIS, ROLL_DRAGONFLY and ROLL_VALKEY can be enabled"
         errors=$((errors + 1))
     fi
     

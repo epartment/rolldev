@@ -5,8 +5,8 @@ ROLL_ENV_PATH="$(locateEnvPath)" || exit $?
 loadEnvConfig "${ROLL_ENV_PATH}" || exit $?
 assertDockerRunning
 
-if [[ ${ROLL_REDIS:-1} -eq 0 && ${ROLL_DRAGONFLY:-1} -eq 0 ]]; then
-  fatal "Redis nor Dragonfly environment is not used (ROLL_REDIS=0|ROLL_DRAGONFLY=0)."
+if [[ ${ROLL_REDIS:-1} -eq 0 && ${ROLL_DRAGONFLY:-1} -eq 0 && ${ROLL_VALKEY:-0} -eq 0 ]]; then
+  fatal "None of Redis, Dragonfly or Valkey is used in this environment (ROLL_REDIS=0|ROLL_DRAGONFLY=0|ROLL_VALKEY=0)."
 fi
 
 ## Bare `roll redis` opens a session, so this cannot key on an empty ROLL_PARAMS the way db/env/svc
@@ -25,4 +25,9 @@ if [[ ! ${REDIS_CONTAINER} ]]; then
     fatal "No container found for redis service."
 fi
 
-"${ROLL_DIR}/bin/roll" env exec redis redis-cli "${ROLL_PARAMS[@]}" "$@"
+## Valkey also runs as the `redis` service; its image ships redis-cli only as a compatibility
+## symlink, so call its own client by name rather than rely on that link staying.
+REDIS_CLI=redis-cli
+[[ ${ROLL_VALKEY:-0} -eq 1 ]] && REDIS_CLI=valkey-cli
+
+"${ROLL_DIR}/bin/roll" env exec redis "${REDIS_CLI}" "${ROLL_PARAMS[@]}" "$@"

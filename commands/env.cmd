@@ -12,8 +12,8 @@ if (( ${#ROLL_PARAMS[@]} == 0 )) || [[ "${ROLL_PARAMS[0]}" == "help" ]]; then
   source "${ROLL_DIR}/commands/usage.cmd"
 fi
 
-if [[ ${ROLL_REDIS} -eq 1 && ${ROLL_DRAGONFLY} -eq 1 ]]; then
-  fatal "In-memory db distribution collision detected. Redis and Dragonfly service can't run at the same time set one of them off with (ROLL_REDIS=0|ROLL_DRAGONFLY=0)."
+if ! inMemoryStoreToggleIsUnique "${ROLL_REDIS}" "${ROLL_DRAGONFLY}" "${ROLL_VALKEY}"; then
+  fatal "In-memory db distribution collision detected. Redis, Dragonfly and Valkey all provide the redis service, so only one can run: switch the others off (ROLL_REDIS=0|ROLL_DRAGONFLY=0|ROLL_VALKEY=0)."
 fi
 ## allow return codes from sub-process to bubble up normally
 trap '' ERR
@@ -85,6 +85,9 @@ fi
 
 [[ ${ROLL_DRAGONFLY} -eq 1 ]] \
     && appendEnvPartialIfExists "dragonfly"
+
+[[ ${ROLL_VALKEY} -eq 1 ]] \
+    && appendEnvPartialIfExists "valkey"
 
 appendEnvPartialIfExists "${ROLL_ENV_TYPE}"
 

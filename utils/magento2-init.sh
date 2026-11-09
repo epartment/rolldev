@@ -64,7 +64,9 @@ function m2initValidateArguments () {
 
 ## Phase: resolve version -- get compatible software versions based on Magento version (2.4.6+ only)
 ## Sets: PHP_VERSION, DB_DISTRIBUTION_VERSION, ELASTICSEARCH_VERSION, REDIS_VERSION,
-## RABBITMQ_VERSION, VARNISH_VERSION, COMPOSER_VERSION, NODE_VERSION
+## VALKEY_VERSION, RABBITMQ_VERSION, VARNISH_VERSION, COMPOSER_VERSION, NODE_VERSION
+## VALKEY_VERSION is non-empty for the releases whose requirements list Valkey instead of Redis
+## (2.4.8 and later); m2initWriteEnvConfig then enables Valkey in place of Redis.
 function m2initResolveSoftwareVersions () {
     local magento_version="$1"
     local base_version
@@ -84,6 +86,7 @@ function m2initResolveSoftwareVersions () {
     DB_DISTRIBUTION_VERSION="10.6"
     ELASTICSEARCH_VERSION="7.17"
     REDIS_VERSION="7.0"
+    VALKEY_VERSION=""
     RABBITMQ_VERSION="3.9"
     VARNISH_VERSION="7.1"
     COMPOSER_VERSION="2"
@@ -95,7 +98,7 @@ function m2initResolveSoftwareVersions () {
             PHP_VERSION="8.4"
             DB_DISTRIBUTION_VERSION="11.4"
             ELASTICSEARCH_VERSION="2.19"  # OpenSearch
-            REDIS_VERSION="8.0"
+            VALKEY_VERSION="9"
             RABBITMQ_VERSION="4.1"
             VARNISH_VERSION="7.7"
             COMPOSER_VERSION="2"
@@ -104,7 +107,7 @@ function m2initResolveSoftwareVersions () {
             PHP_VERSION="8.3"
             DB_DISTRIBUTION_VERSION="11.4"
             ELASTICSEARCH_VERSION="2.19"  # OpenSearch
-            REDIS_VERSION="8.0"
+            VALKEY_VERSION="8"
             RABBITMQ_VERSION="4.1"
             VARNISH_VERSION="7.7"
             COMPOSER_VERSION="2"
@@ -163,7 +166,11 @@ function m2initResolveSoftwareVersions () {
     else
         echo -e "  Search Engine: Elasticsearch ${ELASTICSEARCH_VERSION}"
     fi
-    echo -e "  Redis: ${REDIS_VERSION}"
+    if [[ -n "${VALKEY_VERSION}" ]]; then
+        echo -e "  Valkey: ${VALKEY_VERSION}"
+    else
+        echo -e "  Redis: ${REDIS_VERSION}"
+    fi
     echo -e "  RabbitMQ: ${RABBITMQ_VERSION}"
     echo -e "  Varnish: ${VARNISH_VERSION}"
     echo -e "  Composer: ${COMPOSER_VERSION}"
@@ -204,7 +211,7 @@ function m2initCreateProjectDirectory () {
 }
 
 ## Phase: write env -- run env-init and rewrite .env.roll with the resolved software versions
-## Requires: PHP_VERSION, DB_DISTRIBUTION_VERSION, ELASTICSEARCH_VERSION, REDIS_VERSION,
+## Requires: PHP_VERSION, DB_DISTRIBUTION_VERSION, ELASTICSEARCH_VERSION, REDIS_VERSION, VALKEY_VERSION,
 ## RABBITMQ_VERSION, VARNISH_VERSION, COMPOSER_VERSION (from m2initResolveSoftwareVersions)
 ## Sets: ENV_FILE
 function m2initWriteEnvConfig () {
@@ -246,14 +253,20 @@ function m2initWriteEnvConfig () {
         fi
     fi
 
-    # Handle Redis configuration (always use Redis for Magento 2)
-    # Magento 2 works best with traditional Redis, so we always use Redis regardless of version
+    # In-memory store: Valkey where the release's requirements list it (2.4.8+), Redis before that.
+    # Both run as the `redis` service, so the setup:install flags below are the same either way.
+    sed -i.bak "s/^ROLL_DRAGONFLY=.*/ROLL_DRAGONFLY=0/" "${ENV_FILE}"
+    sed -i.bak "/^DRAGONFLY_VERSION=/d" "${ENV_FILE}"
+    if [[ -n "${VALKEY_VERSION}" ]]; then
+        sed -i.bak "s/^ROLL_REDIS=.*/ROLL_REDIS=0/" "${ENV_FILE}"
+        sed -i.bak "s/^ROLL_VALKEY=.*/ROLL_VALKEY=1/" "${ENV_FILE}"
+        sed -i.bak "s/^VALKEY_VERSION=.*/VALKEY_VERSION=${VALKEY_VERSION}/" "${ENV_FILE}"
+        sed -i.bak "/^REDIS_VERSION=/d" "${ENV_FILE}"
+    else
         sed -i.bak "s/^ROLL_REDIS=.*/ROLL_REDIS=1/" "${ENV_FILE}"
-        sed -i.bak "s/^ROLL_DRAGONFLY=.*/ROLL_DRAGONFLY=0/" "${ENV_FILE}"
+        sed -i.bak "s/^ROLL_VALKEY=.*/ROLL_VALKEY=0/" "${ENV_FILE}"
         sed -i.bak "s/^REDIS_VERSION=.*/REDIS_VERSION=${REDIS_VERSION}/" "${ENV_FILE}"
-    # Ensure Dragonfly version is not present
-    if grep -q "^DRAGONFLY_VERSION=" "${ENV_FILE}"; then
-        sed -i.bak "/^DRAGONFLY_VERSION=/d" "${ENV_FILE}"
+        sed -i.bak "/^VALKEY_VERSION=/d" "${ENV_FILE}"
     fi
 
     # Clean up backup file
@@ -335,7 +348,7 @@ function m2initStartEnvironment () {
     fi
 
     # Wait for Redis to be ready
-    echo -n "Waiting for Redis... "
+    echo -n "Waiting for Redis/Valkey... "
     timeout=30
     while [ $timeout -gt 0 ]; do
         if "${ROLL_DIR}/bin/roll" redis ping 2>/dev/null | grep -q PONG; then
@@ -348,7 +361,7 @@ function m2initStartEnvironment () {
     done
 
     if [ $timeout -le 0 ]; then
-        echo "❌ Redis not ready after 30 seconds"
+        echo "❌ Redis/Valkey not ready after 30 seconds"
         exit 1
     fi
 

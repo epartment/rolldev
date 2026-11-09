@@ -9,6 +9,34 @@ range. Versions before 0.3.0 predate the GitHub releases and are reconstructed f
 Merge commits, automated `Tagged <version>` commits and version bumps are omitted, as are bullets
 that only restate the release note above them.
 
+## Unreleased
+
+### Added
+
+- **Valkey service.** `ROLL_VALKEY=1` with `VALKEY_VERSION` runs
+  `ghcr.io/epartment/roll/valkey:${VALKEY_VERSION}` (`environments/includes/valkey.base.yml`). Like
+  Dragonfly it runs as the `redis` service, so existing `app/etc/env.php` files keep connecting to
+  `redis:6379` and `roll redis` keeps working (it calls `valkey-cli`); `valkey` resolves as a
+  network alias. Data lives in its own `valkey` volume. `roll backup valkey`,
+  `roll restore --services=valkey`, `roll describe`, `roll config versions valkey` and the version
+  pin check all know about it. Adobe lists Valkey instead of Redis from Magento 2.4.8, so
+  `roll magento2-init` now configures Valkey 9 for 2.4.9 and Valkey 8 for 2.4.8 (it wrote Redis
+  8.0 for both before).
+
+### Changed
+
+- **At most one of `ROLL_REDIS`, `ROLL_DRAGONFLY` and `ROLL_VALKEY` may be on.** `roll env` and
+  `roll config conflicts` refuse two or more. Switching Dragonfly or Valkey on is now enough by
+  itself: when `.env.roll` does not set `ROLL_REDIS`, it derives as 0 instead of the default 1.
+  Before, `ROLL_DRAGONFLY=1` without an explicit `ROLL_REDIS=0` made every `roll env` command fail
+  with the collision error.
+
+### Fixed
+
+- **RedisInsight's preset connection reaches the store.** It pointed at `<env>-redis`, a container
+  hostname only the Redis fragment sets, so it did not resolve when Dragonfly or Valkey ran the
+  service; it now uses the service name `redis`.
+
 ## [0.8.6](https://github.com/epartment/rolldev/releases/tag/0.8.6) — 2026-10-27
 
 ### Fixed

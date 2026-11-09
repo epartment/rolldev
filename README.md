@@ -309,7 +309,7 @@ part. These are the couplings that are not visible from it:
 |---|---|---|---|
 | `commands/backup.cmd` | `commands/restore.cmd`, `commands/restore-full.cmd` | Undocumented on-disk contract: the staging directory `<cwd>/.roll/backups`, the archive layout, and the metadata JSON. Each file re-derives the path independently (documented in a comment at `commands/backup.cmd:22-35`) | Changing the layout in one file silently breaks the others; `restore-full.cmd` never loads the env config at all, so it resolves paths differently |
 | `commands/status.cmd:6` | `docker/docker-compose.yml` | The shared network name is recovered by `grep -A3 'networks:' … \| tail -n1 \| sed`, i.e. by text-parsing YAML | Reordering keys in `docker-compose.yml` breaks `roll status`'s "is RollDev running" check |
-| `environments/includes/redis.base.yml` | `environments/includes/dragonfly.base.yml` | Both define a service literally named `redis`; Dragonfly only swaps the image and volume | Correct as written — it is what lets `roll redis` work either way — but it forces the mutual-exclusion guard at `commands/env.cmd:12-14` |
+| `environments/includes/redis.base.yml` | `environments/includes/dragonfly.base.yml`, `environments/includes/valkey.base.yml` | All three define a service literally named `redis`; Dragonfly and Valkey only swap the image and volume (Valkey adds a `valkey` network alias) | Correct as written — it is what lets `roll redis` and every existing `env.php` work with any of them — but it forces the mutual-exclusion guard at `commands/env.cmd:15-17` (`inMemoryStoreToggleIsUnique` in `utils/config.sh`) |
 | `commands/env.cmd:116-120` | `commands/browsersync.cmd` | `env up` shells back out to `roll browsersync freeport` to pick host ports before assembling the compose args | A circular dependency between two commands, evaluated on every `up` with browsersync enabled |
 | `docs/index.md:7` | `README.md` | Sphinx `include` with `end-before: <!-- include_open_stop -->` | Keep the marker: anything below it is contributor-facing and stays off the published site |
 
@@ -359,7 +359,7 @@ exists to re-mount the repository root's `.git` explicitly
 
 ### Service toggles
 
-Registered in `utils/config.sh:70-87`. Each enabled toggle appends the matching fragment from
+Registered in `utils/config.sh:77-104`. Each enabled toggle appends the matching fragment from
 `environments/includes/`.
 
 | Toggle | Schema default | Service | Exposed at |
@@ -367,7 +367,8 @@ Registered in `utils/config.sh:70-87`. Each enabled toggle appends the matching 
 | `ROLL_NGINX` | 1 | nginx | `https://<sub>.<domain>` (priority 2) |
 | `ROLL_DB` | 1 | `mariadb` or `mysql` per `DB_DISTRIBUTION` | `db:3306` internally, or via the SSH tunnel |
 | `ROLL_REDIS` | 1 | redis | `redis:6379` |
-| `ROLL_DRAGONFLY` | 0 | Dragonfly **as the `redis` service** | `redis:6379`; mutually exclusive with `ROLL_REDIS` |
+| `ROLL_DRAGONFLY` | 0 | Dragonfly **as the `redis` service** | `redis:6379`; mutually exclusive with `ROLL_REDIS` and `ROLL_VALKEY` |
+| `ROLL_VALKEY` | 0 | Valkey **as the `redis` service** (image `valkey:${VALKEY_VERSION}`, volume `valkey`) | `redis:6379`, alias `valkey`; mutually exclusive with `ROLL_REDIS` and `ROLL_DRAGONFLY`. Switching it (or Dragonfly) on derives `ROLL_REDIS=0` when the project does not set it (`applyEnvTypeDefaults`). `magento2-init` picks it for 2.4.8+ |
 | `ROLL_VARNISH` | 0 | varnish in front of nginx | takes over the host route (priority 1) and sets `traefik.enable=false` on nginx |
 | `ROLL_ELASTICSEARCH` | 0 | elasticsearch | `https://elasticsearch.<domain>` |
 | `ROLL_OPENSEARCH` | 0 | opensearch | `https://opensearch.<domain>` |
@@ -651,10 +652,11 @@ Checked during this review and found correct, so the next reader does not re-inv
   via `tr` or the `capitalize` helper function.
 - **Arithmetic increments.** No bare `((x++))` remains in `commands/` or `utils/`; the codebase uses
   `x=$((x + 1))`, which is what keeps `set -e` from killing the CLI mid-command.
-- **`roll redis` works with Dragonfly.** `environments/includes/dragonfly.base.yml` defines the
-  service as `redis` with the Dragonfly image, so `commands/redis.cmd:17`'s lookup of the `redis`
-  service succeeds under either backend. The mutual-exclusion guard at `commands/env.cmd:12-14` is
-  the necessary consequence, not a bug.
+- **`roll redis` works with Dragonfly and Valkey.** `environments/includes/dragonfly.base.yml` and
+  `environments/includes/valkey.base.yml` define the service as `redis` with their own image, so
+  `commands/redis.cmd:23`'s lookup of the `redis` service succeeds under every backend (for Valkey
+  it runs `valkey-cli`). The mutual-exclusion guard at `commands/env.cmd:15-17` is the necessary
+  consequence, not a bug.
 - **`roll db connect` and `roll db import` survive MariaDB 11.** The `mysql` client symlink is still
   present in `ghcr.io/epartment/roll/mariadb:11.4` (verified in a running container); only
   `mysqldump` was removed, which is why **H2** is scoped to `dump` alone.
