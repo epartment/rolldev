@@ -31,7 +31,7 @@ The `magento2` environment type provides necessary containerized services for ru
 * MariaDB
 * Elasticsearch
 * RabbitMQ
-* Redis
+* Redis (or Valkey with `ROLL_VALKEY=1`, the default `magento2-init` picks for 2.4.8 and later)
 
 In order to achieve a well performing experience on macOS, files in the webroot are synced into the container using a Mutagen sync session with the exception of `pub/media` which remains mounted using a delegated mount.
 

@@ -217,6 +217,12 @@ if [[ "${ROLL_REDIS:-0}" == "1" ]]; then
     service_row "redis" "$(get_status_text redis)" "InDocker: redis:6379" "Redis ${REDIS_VERSION}"
 fi
 
+## Valkey runs as the `redis` service (environments/includes/valkey.base.yml), so the status
+## lookup and the in-Docker address are the redis ones; `valkey` also resolves as an alias.
+if [[ "${ROLL_VALKEY:-0}" == "1" ]]; then
+    service_row "redis" "$(get_status_text redis)" "InDocker: redis:6379" "Valkey ${VALKEY_VERSION}"
+fi
+
 if [[ "${ROLL_REDISINSIGHT:-0}" == "1" ]]; then
     service_row "redisinsight" "$(get_status_text redisinsight)" "https://insight.${TRAEFIK_DOMAIN}" ""
 fi

@@ -89,6 +89,7 @@ roll restore --decrypt=strongpassword
 - `db` - Database (MySQL/MariaDB/PostgreSQL)
 - `redis` - Redis cache
 - `dragonfly` - Dragonfly cache  
+- `valkey` - Valkey cache
 - `elasticsearch` - Elasticsearch
 - `opensearch` - OpenSearch
 - `mongodb` - MongoDB

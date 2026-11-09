@@ -271,6 +271,7 @@ function getVolumeMapping() {
             ;;
         redis) echo "${ROLL_ENV_NAME}_redis:redis" ;;
         dragonfly) echo "${ROLL_ENV_NAME}_dragonfly:dragonfly" ;;
+        valkey) echo "${ROLL_ENV_NAME}_valkey:valkey" ;;
         elasticsearch) echo "${ROLL_ENV_NAME}_esdata:elasticsearch" ;;
         opensearch) echo "${ROLL_ENV_NAME}_osdata:opensearch" ;;
         mongodb) echo "${ROLL_ENV_NAME}_mongodb:mongodb" ;;

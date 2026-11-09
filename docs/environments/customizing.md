@@ -6,12 +6,13 @@ To configure your project with a non-default PHP version, add the following to t
 
     PHP_VERSION=8.1
 
-The versions of MariaDB/Mysql, Elasticsearch, Varnish, Redis, NodeJS and Composer may also be similarly configured using variables in the `.env.roll` file:
+The versions of MariaDB/Mysql, Elasticsearch, Varnish, Redis, Valkey, NodeJS and Composer may also be similarly configured using variables in the `.env.roll` file:
 
   * `DB_DISTRIBUTION_VERSION` (Available distributions: `DB_DISTRIBUTION=mysql` or `DB_DISTRIBUTION=mariadb`)
   * `ELASTICSEARCH_VERSION`
   * `OPENSEARCH_VERSION`
   * `REDIS_VERSION`
+  * `VALKEY_VERSION` (with `ROLL_VALKEY=1`; see below)
   * `VARNISH_VERSION`
   * `RABBITMQ_VERSION`
   * `NODE_VERSION`
@@ -21,6 +22,11 @@ Start of some environments could be skipped by using variables in `.env.roll` fi
 
   * `ROLL_DB=0`
   * `ROLL_REDIS=0`
+
+Redis can be replaced by Valkey (`ROLL_VALKEY=1`) or Dragonfly (`ROLL_DRAGONFLY=1`). Each of them
+runs as the `redis` service, so the application keeps connecting to `redis:6379`, and only one of
+the three toggles may be on at a time, so set `ROLL_REDIS=0` next to the one you switch on. When
+`.env.roll` has no `ROLL_REDIS` line at all, it defaults to off as soon as Valkey or Dragonfly is on.
 
 ## Docker Specific Customizations
 To override default docker settings, add a custom configuration file in your project root

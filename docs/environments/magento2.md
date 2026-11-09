@@ -43,11 +43,28 @@ The `magento2-init` command automates all the manual steps listed below:
 
 The command automatically selects compatible software versions:
 
-| Magento Version | PHP | MariaDB | Search Engine | Redis | RabbitMQ | Varnish |
+| Magento Version | PHP | MariaDB | Search Engine | Cache | RabbitMQ | Varnish |
 |-----------------|-----|---------|---------------|-------|----------|---------|
-| 2.4.8+ | 8.3 | 11.4 | OpenSearch 2.19 | Valkey 8 | 4.1 | 7.7 |
+| 2.4.9 | 8.4 | 11.4 | OpenSearch 2.19 | Valkey 9 | 4.1 | 7.7 |
+| 2.4.8 | 8.3 | 11.4 | OpenSearch 2.19 | Valkey 8 | 4.1 | 7.7 |
 | 2.4.7 | 8.3 | 10.6+ | Elasticsearch 7.17 | Redis 7.2 | 3.13 | 7.5+ |
 | 2.4.6 | 8.2 | 10.6 | Elasticsearch 7.17 | Redis 7.0+ | 3.9 | 7.1+ |
+
+### Valkey instead of Redis
+
+Adobe's system requirements list Valkey, not Redis, as the cache and session store from Magento
+2.4.8 on, so `magento2-init` writes `ROLL_VALKEY=1` and `VALKEY_VERSION` for those releases. An
+existing project switches the same way:
+
+    ROLL_REDIS=0
+    ROLL_VALKEY=1
+    VALKEY_VERSION=9
+
+Valkey runs as the `redis` service, so `app/etc/env.php` keeps connecting to `redis:6379` and
+`roll redis` keeps working; the hostname `valkey` resolves to the same container. `ROLL_REDIS`,
+`ROLL_DRAGONFLY` and `ROLL_VALKEY` are mutually exclusive: `roll env` refuses to start with more
+than one of them on. The Valkey data lives in its own `valkey` volume, so the cache and sessions
+start empty after the switch, and switching back finds the old `redis` volume untouched.
 
 ### Prerequisites
 

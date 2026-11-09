@@ -25,11 +25,16 @@ The backup system automatically detects and supports:
 | Database | MySQL, MariaDB, PostgreSQL | `dbdata` |
 | Redis | Redis cache | `redis` |
 | Dragonfly | Dragonfly cache | `dragonfly` |
+| Valkey | Valkey cache | `valkey` |
 | Elasticsearch | Search engine | `esdata` |
 | OpenSearch | Search engine | `osdata` |
 | MongoDB | Document database | `mongodb` |
 | RabbitMQ | Message queue | `rabbitmq` |
 | Varnish | HTTP cache | `varnish` |
+
+Valkey keeps its own `valkey` volume even though it runs as the `redis` service. A backup taken
+while the project ran Redis contains `redis`, and restoring it after switching to Valkey writes the
+`redis` volume, which Valkey does not read: the Valkey cache and sessions simply start empty.
 
 ## Backup Commands
 

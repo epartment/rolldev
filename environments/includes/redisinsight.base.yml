@@ -9,7 +9,7 @@ services:
       - traefik.http.services.${ROLL_ENV_NAME}-redisinsight.loadbalancer.server.port=5540
       - traefik.docker.network=${ROLL_ENV_NAME}_default
     environment:
-      - RI_REDIS_HOST=${ROLL_ENV_NAME}-redis
+      - RI_REDIS_HOST=redis
       - RI_REDIS_PORT=6379
       - RI_REDIS_ALIAS=${ROLL_ENV_NAME} Redis
       - RI_DATABASE_MANAGEMENT=false

@@ -201,11 +201,13 @@ function detectEnabledServices() {
         esac
     fi
     
-    # Check Redis/Dragonfly
+    # Check Redis/Dragonfly/Valkey
     if [[ ${ROLL_REDIS:-0} -eq 1 ]]; then
         services+=("redis:redis:redis")
     elif [[ ${ROLL_DRAGONFLY:-0} -eq 1 ]]; then
         services+=("dragonfly:dragonfly:dragonfly")
+    elif [[ ${ROLL_VALKEY:-0} -eq 1 ]]; then
+        services+=("valkey:valkey:valkey")
     fi
     
     # Check Elasticsearch/OpenSearch
@@ -761,11 +763,11 @@ function performBackup() {
                 fi
             done
             ;;
-        redis|dragonfly)
-            # Find Redis/Dragonfly service
+        redis|dragonfly|valkey)
+            # Find Redis/Dragonfly/Valkey service
             for service_info in "${enabled_services[@]}"; do
                 IFS=':' read -r service_name service_type volume_name <<< "$service_info"
-                if [[ "$service_type" =~ ^(redis|dragonfly)$ ]]; then
+                if [[ "$service_type" =~ ^(redis|dragonfly|valkey)$ ]]; then
                     current_step=$((current_step + 1))
                     if backupVolume "$service_name" "$volume_name" "$backup_dir" $current_step $total_steps; then
                         successful_services+=("$service_info")
@@ -889,7 +891,7 @@ function performBackup() {
 
 # Main execution
 case "${BACKUP_COMMAND_PARAMS[0]}" in
-    all|db|database|redis|dragonfly|elasticsearch|opensearch|mongodb|config|configuration)
+    all|db|database|redis|dragonfly|valkey|elasticsearch|opensearch|mongodb|config|configuration)
         performBackup "${BACKUP_COMMAND_PARAMS[0]}"
         ;;
     list|ls)

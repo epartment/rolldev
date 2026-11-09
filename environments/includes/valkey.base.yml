@@ -1,0 +1,24 @@
+## Valkey runs as the `redis` service, like Dragonfly: every existing app/etc/env.php, the Magento
+## setup:install flags in magento2-init and `roll redis` reach the in-memory store at `redis:6379`,
+## so switching a project from Redis to Valkey needs no application change. The `valkey` alias lets
+## new configuration name the store for what it is. ROLL_REDIS, ROLL_DRAGONFLY and ROLL_VALKEY are
+## mutually exclusive for the same reason (env.cmd refuses to start with more than one on).
+services:
+  redis:
+    hostname: "${ROLL_ENV_NAME}-valkey"
+    image: ${ROLL_IMAGE_REPOSITORY}/valkey:${VALKEY_VERSION}
+    networks:
+      default:
+        aliases:
+          - valkey
+    volumes:
+      - valkey:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  valkey:

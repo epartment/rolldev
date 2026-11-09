@@ -53,6 +53,7 @@ ROLL_USAGE=$(cat <<EOF
   db, database           Database volumes (MySQL/MariaDB/PostgreSQL)
   redis                  Redis cache volumes
   dragonfly             Dragonfly cache volumes
+  valkey                Valkey cache volumes
   elasticsearch         Elasticsearch search volumes
   opensearch            OpenSearch search volumes
   mongodb               MongoDB document volumes

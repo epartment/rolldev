@@ -12,6 +12,7 @@ ROLL_USAGE=$(cat <<EOF
   db, database           Backup database volumes only
   redis                  Backup Redis cache volumes only
   dragonfly             Backup Dragonfly cache volumes only
+  valkey                Backup Valkey cache volumes only
   elasticsearch         Backup Elasticsearch search volumes only
   opensearch            Backup OpenSearch search volumes only
   mongodb               Backup MongoDB document volumes only
