@@ -571,6 +571,27 @@ function performLegacyMigration() {
     fi
 }
 
+## decryptConfigInto <encrypted source> <target path>
+## Decrypt into a private temporary file next to the target and write the target only once gpg has
+## succeeded. Redirecting gpg straight into the target truncated it before decryption started, so a
+## wrong passphrase or a damaged archive left an empty env.php or auth.json, and the restore keeps no
+## copy of the original. `cat >` rather than `mv` keeps the target's own owner and mode.
+function decryptConfigInto() {
+    local source_file="$1" target_path="$2" tmp_file=""
+
+    tmp_file="$(mktemp "${target_path}.restore.XXXXXX")" || return 1
+
+    if echo "$RESTORE_DECRYPT" | gpg --batch --yes --quiet --passphrase-fd 0 --decrypt "$source_file" > "$tmp_file" \
+        && cat "$tmp_file" > "$target_path"
+    then
+        rm -f "$tmp_file"
+        return 0
+    fi
+
+    rm -f "$tmp_file"
+    return 1
+}
+
 function restoreConfigurations() {
     local backup_path="$1"
     local step="$2"
@@ -621,7 +642,7 @@ function restoreConfigurations() {
                         if [[ $is_encrypted == true ]]; then
                             # Decrypt the file directly to target location
                             if [[ -n "$RESTORE_DECRYPT" ]]; then
-                                if echo "$RESTORE_DECRYPT" | gpg --batch --yes --quiet --passphrase-fd 0 --decrypt "$source_file" > "$target_path"; then
+                                if decryptConfigInto "$source_file" "$target_path"; then
                                     logMessage INFO "Decrypted and restored $file"
                                 else
                                     logMessage ERROR "Failed to decrypt $file"
@@ -675,7 +696,7 @@ function restoreConfigurations() {
             if [[ $is_encrypted == true ]]; then
                 # Decrypt the file
                 if [[ -n "$RESTORE_DECRYPT" ]]; then
-                    if echo "$RESTORE_DECRYPT" | gpg --batch --yes --quiet --passphrase-fd 0 --decrypt "$config_file" > "$target_path"; then
+                    if decryptConfigInto "$config_file" "$target_path"; then
                         logMessage INFO "Decrypted and restored $relative_path"
                     else
                         logMessage ERROR "Failed to decrypt $relative_path"

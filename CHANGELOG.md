@@ -40,6 +40,10 @@ that only restate the release note above them.
   (1.3 MB per `composer.lock`, credentials in `env.php` and `auth.json`), usually hidden by the
   project's `.gitignore`. The restore now overwrites without a copy: tracked files come back with
   `git checkout`, and after a pull the archived `env.php` and `auth.json` are the ones wanted.
+- **A failed decryption no longer empties `env.php` or `auth.json`.** Encrypted configuration was
+  decrypted straight into the target, which the shell truncates before gpg runs, so a wrong
+  passphrase or a damaged archive left an empty file. It now decrypts into a temporary file and
+  writes the target only on success.
 - **RedisInsight's preset connection reaches the store.** It pointed at `<env>-redis`, a container
   hostname only the Redis fragment sets, so it did not resolve when Dragonfly or Valkey ran the
   service; it now uses the service name `redis`.
