@@ -667,18 +667,11 @@ function restoreConfigurations() {
             # Create target directory if needed
             mkdir -p "$(dirname "$target_path")"
             
-            # Backup existing file if it exists
-            if [[ -f "$target_path" ]]; then
-                if [[ $is_encrypted == true ]]; then
-                    # For encrypted files, we can't easily compare so always backup
-                    cp "$target_path" "$target_path.backup.$(date +%s)"
-                    logMessage INFO "Backed up existing $relative_path"
-                elif ! cmp -s "$config_file" "$target_path"; then
-                    cp "$target_path" "$target_path.backup.$(date +%s)"
-                    logMessage INFO "Backed up existing $relative_path"
-                fi
-            fi
-            
+            # The existing file is overwritten without keeping a copy. Restores used to save it as
+            # `<file>.backup.<epoch>` beside the original, so every `roll pull` whose archived
+            # .env.roll, env.php, auth.json or composer.lock differed left more of them in the project
+            # root and app/etc (credentials included). Nobody used them: the tracked files come back
+            # with `git checkout`, and for env.php and auth.json the archived copy is the one wanted.
             if [[ $is_encrypted == true ]]; then
                 # Decrypt the file
                 if [[ -n "$RESTORE_DECRYPT" ]]; then
