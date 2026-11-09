@@ -210,6 +210,29 @@ function m2initCreateProjectDirectory () {
     return 0
 }
 
+## m2initSetEnvValue <key> <value>
+## Set KEY=value in ${ENV_FILE}, appending the line when the file has none. The plain sed
+## substitutions in m2initWriteEnvConfig only rewrite keys the init.env template already carries,
+## and fetchEnvInitFile prefers a user's own ~/.roll or project .roll/environments/magento2/init.env
+## over the bundled one: a template written before Valkey existed has no ROLL_VALKEY line, so
+## switching Redis off without this would leave no in-memory store running at all.
+function m2initSetEnvValue () {
+    local key="$1" value="$2"
+
+    if grep -q "^${key}=" "${ENV_FILE}"; then
+        sed -i.bak "s/^${key}=.*/${key}=${value}/" "${ENV_FILE}"
+        return 0
+    fi
+
+    ## keep the appended line off the end of a last line that has no newline
+    if [[ -s "${ENV_FILE}" && -n "$(tail -c 1 "${ENV_FILE}")" ]]; then
+        echo "" >> "${ENV_FILE}"
+    fi
+    echo "${key}=${value}" >> "${ENV_FILE}"
+
+    return 0
+}
+
 ## Phase: write env -- run env-init and rewrite .env.roll with the resolved software versions
 ## Requires: PHP_VERSION, DB_DISTRIBUTION_VERSION, ELASTICSEARCH_VERSION, REDIS_VERSION, VALKEY_VERSION,
 ## RABBITMQ_VERSION, VARNISH_VERSION, COMPOSER_VERSION (from m2initResolveSoftwareVersions)
@@ -259,8 +282,8 @@ function m2initWriteEnvConfig () {
     sed -i.bak "/^DRAGONFLY_VERSION=/d" "${ENV_FILE}"
     if [[ -n "${VALKEY_VERSION}" ]]; then
         sed -i.bak "s/^ROLL_REDIS=.*/ROLL_REDIS=0/" "${ENV_FILE}"
-        sed -i.bak "s/^ROLL_VALKEY=.*/ROLL_VALKEY=1/" "${ENV_FILE}"
-        sed -i.bak "s/^VALKEY_VERSION=.*/VALKEY_VERSION=${VALKEY_VERSION}/" "${ENV_FILE}"
+        m2initSetEnvValue ROLL_VALKEY 1
+        m2initSetEnvValue VALKEY_VERSION "${VALKEY_VERSION}"
         sed -i.bak "/^REDIS_VERSION=/d" "${ENV_FILE}"
     else
         sed -i.bak "s/^ROLL_REDIS=.*/ROLL_REDIS=1/" "${ENV_FILE}"
