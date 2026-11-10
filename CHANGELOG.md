@@ -21,7 +21,9 @@ that only restate the release note above them.
   `roll restore --services=valkey`, `roll describe`, `roll config versions valkey` and the version
   pin check all know about it. Adobe lists Valkey instead of Redis from Magento 2.4.8, so
   `roll magento2-init` now configures Valkey 9 for 2.4.9 and Valkey 8 for 2.4.8 (it wrote Redis
-  8.0 for both before).
+  8.0 for both before). It adds the Valkey lines when the project's `init.env` template is a
+  custom one from `~/.roll/environments` or `.roll/environments` that predates them, instead of
+  switching Redis off and leaving no store running.
 
 ### Changed
 
