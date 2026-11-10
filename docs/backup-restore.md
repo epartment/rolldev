@@ -204,6 +204,16 @@ The system automatically backs up relevant configuration files:
 - `config/database.yml` - Rails database configuration
 - Other framework-specific configuration files
 
+### Files a Restore Replaces
+
+`roll restore` (and `roll pull`, which runs it) writes the archived copies over the project's own
+files without keeping the old ones. Tracked files such as `.env.roll`, `composer.json` and
+`composer.lock` come back with `git checkout -- <file>`; for untracked ones such as
+`app/etc/env.php` and `auth.json`, copy anything you want to keep before restoring.
+
+Earlier versions saved every overwritten file as `<file>.backup.<epoch>` next to it. Those leftovers
+can be deleted; `find . -maxdepth 3 -name '*.backup.[0-9]*' -not -path './vendor/*'` lists them.
+
 ## Metadata and Integrity
 
 Each backup includes comprehensive metadata:
